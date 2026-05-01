@@ -3,10 +3,11 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { safeRedirectPath } from "@/lib/safe-redirect-path";
 
 export function LoginInner() {
   const search = useSearchParams();
-  const next = useMemo(() => search.get("next") ?? "/my-patterns", [search]);
+  const next = useMemo(() => safeRedirectPath(search.get("next")), [search]);
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);

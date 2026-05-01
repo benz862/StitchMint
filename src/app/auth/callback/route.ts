@@ -1,11 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { safeRedirectPath } from "@/lib/safe-redirect-path";
+import { normalizeSupabaseUrl } from "@/lib/supabase/normalize-url";
 
 export async function GET(request: NextRequest) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const url = normalizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const rawNext = request.nextUrl.searchParams.get("next") ?? "/my-patterns";
-  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/my-patterns";
+  const next = safeRedirectPath(request.nextUrl.searchParams.get("next"));
 
   if (!url || !anon) {
     return NextResponse.redirect(new URL("/", request.url));
