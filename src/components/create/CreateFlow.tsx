@@ -6,9 +6,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PRICING_TIERS, type PricingTierId } from "@/config/pricing";
 import { FABRIC_COUNTS } from "@/lib/constants";
+import { STORAGE_BUCKETS } from "@/lib/buckets";
+import { encodeImageFileToWebpBlob } from "@/lib/encode-original-client";
 import { finishedSizeInches, inchesToCm } from "@/lib/measurements";
 import type { CropPercent } from "@/lib/pattern-engine";
 import { readApiJson } from "@/lib/read-api-json";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const ASPECT_PRESETS = [
   { id: "portrait", label: "Portrait", value: 3 / 4 },
@@ -84,14 +87,38 @@ export function CreateFlow() {
     setBusy(true);
     setError(null);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("title", "My Pattern");
-      const res = await fetch("/api/patterns", { method: "POST", body: fd });
-      const json = await readApiJson<{ error?: string; id?: string }>(res);
-      if (!res.ok) throw new Error(json.error ?? "Upload failed");
-      if (!json.id) throw new Error("Upload succeeded but no pattern id was returned.");
-      setPatternId(json.id);
+      const draftRes = await fetch("/api/patterns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "My Pattern" }),
+      });
+      const draft = await readApiJson<{ error?: string; id?: string }>(draftRes);
+      if (!draftRes.ok) throw new Error(draft.error ?? "Could not start upload");
+      if (!draft.id) throw new Error("Could not start upload");
+
+      const supabase = createSupabaseBrowserClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("You need to be signed in to upload.");
+
+      const webpBlob = await encodeImageFileToWebpBlob(file);
+      const contentType = webpBlob.type === "image/webp" ? "image/webp" : "image/jpeg";
+      const ext = contentType === "image/webp" ? "webp" : "jpg";
+      const storagePath = `${user.id}/${draft.id}/original.${ext}`;
+
+      const { error: upErr } = await supabase.storage
+        .from(STORAGE_BUCKETS.originals)
+        .upload(storagePath, webpBlob, { contentType, upsert: true });
+      if (upErr) throw new Error(upErr.message ?? "Upload to storage failed");
+
+      const { error: updErr } = await supabase
+        .from("patterns")
+        .update({ original_image_url: storagePath })
+        .eq("id", draft.id);
+      if (updErr) throw new Error(updErr.message ?? "Could not attach image to pattern");
+
+      setPatternId(draft.id);
       setStep(3);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
