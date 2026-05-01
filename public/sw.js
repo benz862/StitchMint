@@ -1,5 +1,5 @@
 /* StitchMint service worker — light offline shell */
-const CACHE = "stitchmint-v1";
+const CACHE = "stitchmint-v2";
 const OFFLINE = ["/offline", "/manifest.json", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -8,12 +8,24 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim()),
+  );
 });
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
+
+  const url = new URL(request.url);
+  /* Do not wrap auth or API — avoids odd FetchEvent / cache behavior on login */
+  if (url.pathname.startsWith("/login") || url.pathname.startsWith("/auth") || url.pathname.startsWith("/api")) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   event.respondWith(
     fetch(request)
