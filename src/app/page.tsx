@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { StitchMintLogo } from "@/components/StitchMintLogo";
 
 const faqs = [
   {
@@ -18,8 +19,15 @@ const faqs = [
 export default function HomePage() {
   return (
     <div>
-      <section className="mx-auto max-w-6xl px-4 pb-16 pt-14 sm:px-6 sm:pt-20">
+      <section className="mx-auto max-w-6xl px-4 pb-16 pt-10 sm:px-6 sm:pt-14">
         <div className="mx-auto max-w-3xl text-center">
+          <Link
+            href="/"
+            className="mx-auto mb-10 inline-flex items-center justify-center rounded-3xl bg-card/90 px-6 py-6 shadow-[0_8px_40px_rgba(44,36,22,0.08)] ring-1 ring-line/70 transition hover:ring-accent-soft/50 sm:mb-12 sm:px-10 sm:py-8"
+            aria-label="StitchMint"
+          >
+            <StitchMintLogo variant="hero" className="drop-shadow-sm" />
+          </Link>
           <p className="text-xs uppercase tracking-[0.28em] text-muted">Premium cross-stitch patterns</p>
           <h1 className="mt-4 font-serif text-4xl leading-tight text-ink sm:text-5xl">
             Turn any photo into a beautiful cross-stitch pattern

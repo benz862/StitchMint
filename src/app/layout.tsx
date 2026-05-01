@@ -34,8 +34,8 @@ export const metadata: Metadata = {
   applicationName: "StitchMint",
   manifest: "/manifest.json",
   icons: {
-    icon: "/icon-192.png",
-    apple: "/icon-192.png",
+    icon: [{ url: "/stitchmint_logo.png", type: "image/png", sizes: "any" }],
+    apple: [{ url: "/stitchmint_logo.png", type: "image/png" }],
   },
 };
 
