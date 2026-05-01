@@ -1,4 +1,7 @@
+import fs from "node:fs";
+import path from "node:path";
 import PDFDocument from "pdfkit";
+import sharp from "sharp";
 import type { PatternColorRow } from "@/lib/pattern-engine";
 import { CHART_PAGE_LARGE, CHART_PAGE_REGULAR } from "@/lib/constants";
 import { finishedSizeInches, inchesToCm, recommendedFabricCut } from "@/lib/measurements";
@@ -26,13 +29,60 @@ function collectPdfBuffer(doc: PdfDoc): Promise<Buffer> {
   });
 }
 
+export type CoverBackgroundImage = { buffer: Buffer; width: number; height: number };
+
+/**
+ * Raster cover for Pattern-*.pdf page 1 (Letter, “cover” scaling).
+ * Priority: STITCHMINT_COVER_BG_PATH → public/StitchMint_Pattern_Template.jpg → pattern-cover-bg.*.
+ */
+export async function loadPatternCoverBackground(): Promise<CoverBackgroundImage | null> {
+  const custom = process.env.STITCHMINT_COVER_BG_PATH?.trim();
+  const candidates = [
+    ...(custom ? [custom] : []),
+    path.join(process.cwd(), "public", "StitchMint_Pattern_Template.jpg"),
+    path.join(process.cwd(), "public", "pattern-cover-bg.png"),
+    path.join(process.cwd(), "public", "pattern-cover-bg.jpg"),
+    path.join(process.cwd(), "public", "pattern-cover-bg.webp"),
+  ];
+  for (const filePath of candidates) {
+    try {
+      if (!fs.existsSync(filePath)) continue;
+      const buffer = fs.readFileSync(filePath);
+      const meta = await sharp(buffer).metadata();
+      if (!meta.width || !meta.height) continue;
+      return { buffer, width: meta.width, height: meta.height };
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function drawCoverPageBackground(doc: PdfDoc, bg: CoverBackgroundImage) {
+  const pageW = doc.page.width;
+  const pageH = doc.page.height;
+  const scale = Math.max(pageW / bg.width, pageH / bg.height);
+  const dw = bg.width * scale;
+  const dh = bg.height * scale;
+  const x = (pageW - dw) / 2;
+  const y = (pageH - dh) / 2;
+  doc.save();
+  doc.image(bg.buffer, x, y, { width: dw, height: dh });
+  doc.restore();
+}
+
 function drawCover(
   doc: PdfDoc,
   meta: PatternPdfMeta,
   opts: { original?: Buffer; preview: Buffer },
+  coverBackground: CoverBackgroundImage | null,
 ) {
   const { widthIn, heightIn } = finishedSizeInches(meta.stitchWidth, meta.stitchHeight, meta.fabricCount);
   const cut = recommendedFabricCut(widthIn, heightIn);
+
+  if (coverBackground) {
+    drawCoverPageBackground(doc, coverBackground);
+  }
 
   doc.fontSize(26).fillColor("#2c2416").text("StitchMint Pattern", { align: "center" });
   doc.moveDown(0.4);
@@ -228,11 +278,16 @@ export async function buildPatternPdf(params: {
   variant: ChartVariant;
   originalImage?: Buffer;
   previewImage: Buffer;
+  /** When omitted, loads once from public / env (see loadPatternCoverBackground). */
+  coverBackground?: CoverBackgroundImage | null;
 }): Promise<Buffer> {
   const doc = new PDFDocument({ size: "LETTER", margin: 36, bufferPages: true });
   const done = collectPdfBuffer(doc);
 
-  drawCover(doc, params.meta, { original: params.originalImage, preview: params.previewImage });
+  const coverBg =
+    params.coverBackground !== undefined ? params.coverBackground : await loadPatternCoverBackground();
+
+  drawCover(doc, params.meta, { original: params.originalImage, preview: params.previewImage }, coverBg);
   drawInstructions(doc);
   drawLegend(doc, params.palette);
   drawChartPages(doc, params.grid, params.palette, params.variant);

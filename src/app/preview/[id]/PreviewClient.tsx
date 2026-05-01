@@ -5,6 +5,14 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { finishedSizeInches, inchesToCm } from "@/lib/measurements";
+import { readApiJson } from "@/lib/read-api-json";
+
+type CheckoutSummary = {
+  tier: string;
+  productName: string;
+  amountCents: number;
+  priceLabel: string;
+};
 
 type PatternRow = {
   id: string;
@@ -28,6 +36,7 @@ export function PreviewClient() {
     { dmcNumber: string; dmcName: string; hex: string; stitchCount: number }[]
   >([]);
   const [difficultyLabel, setDifficultyLabel] = useState<string>("");
+  const [checkoutSummary, setCheckoutSummary] = useState<CheckoutSummary | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,16 +44,28 @@ export function PreviewClient() {
     let cancelled = false;
     (async () => {
       const res = await fetch(`/api/patterns/${id}`);
-      const json = await res.json();
+      const json = await readApiJson<{
+        error?: string;
+        pattern?: PatternRow;
+        previewUrl?: string | null;
+        palettePreview?: { dmcNumber: string; dmcName: string; hex: string; stitchCount: number }[];
+        stats?: { difficultyLabel?: string };
+        checkout?: CheckoutSummary;
+      }>(res);
       if (cancelled) return;
       if (!res.ok) {
         setError(json.error ?? "Could not load preview");
         return;
       }
+      if (!json.pattern) {
+        setError("Could not load preview");
+        return;
+      }
       setPattern(json.pattern);
-      setPreviewUrl(json.previewUrl);
+      setPreviewUrl(json.previewUrl ?? null);
       setPalettePreview(json.palettePreview ?? []);
       setDifficultyLabel(json.stats?.difficultyLabel ?? "");
+      setCheckoutSummary(json.checkout ?? null);
     })();
     return () => {
       cancelled = true;
@@ -65,7 +86,7 @@ export function PreviewClient() {
     setError(null);
     try {
       const res = await fetch(`/api/patterns/${id}/checkout`, { method: "POST" });
-      const json = await res.json();
+      const json = await readApiJson<{ error?: string; url?: string }>(res);
       if (!res.ok) throw new Error(json.error ?? "Checkout could not start");
       if (json.url) window.location.href = json.url as string;
     } catch (e) {
@@ -170,7 +191,7 @@ export function PreviewClient() {
               className="inline-flex w-full items-center justify-center rounded-full bg-ink px-6 py-3 text-sm font-medium text-cream"
               onClick={async () => {
                 const res = await fetch(`/api/patterns/${id}/download`);
-                const json = await res.json();
+                const json = await readApiJson<{ error?: string; url?: string }>(res);
                 if (!res.ok) {
                   setError(json.error ?? "Download failed");
                   return;
@@ -187,7 +208,11 @@ export function PreviewClient() {
               onClick={checkout}
               className="inline-flex w-full items-center justify-center rounded-full bg-ink px-6 py-3 text-sm font-medium text-cream shadow disabled:opacity-50"
             >
-              {busy ? "Opening secure checkout…" : "Unlock full pattern"}
+              {busy
+                ? "Opening secure checkout…"
+                : checkoutSummary
+                  ? `Unlock ${checkoutSummary.productName} — $${checkoutSummary.priceLabel}`
+                  : "Unlock full pattern"}
             </button>
           )}
 

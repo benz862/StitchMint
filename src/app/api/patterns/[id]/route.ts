@@ -10,6 +10,8 @@ import {
   type PatternSettings,
 } from "@/lib/pattern-service";
 import type { CropPercent } from "@/lib/pattern-engine";
+import { getPricingTierById, inferPricingTierFromEngine, normalizePricingTierId } from "@/config/pricing";
+import { checkoutSummaryForPatternRow } from "@/lib/pricing-checkout";
 import { difficultyLabel } from "@/lib/stitchability";
 
 export const runtime = "nodejs";
@@ -74,6 +76,7 @@ async function handleGet(ctx: { params: Promise<{ id: string }> }) {
     previewUrl,
     palettePreview,
     stats: { difficultyLabel: difficultyLabel(score) },
+    checkout: checkoutSummaryForPatternRow(data),
   });
 }
 
@@ -102,12 +105,32 @@ async function handlePatch(request: Request, ctx: { params: Promise<{ id: string
     return NextResponse.json({ error: "Original image missing" }, { status: 400 });
   }
 
-  const body = (await request.json()) as Partial<PatternSettings> & { title?: string };
+  const body = (await request.json()) as Partial<PatternSettings> & { title?: string; pricingTier?: string };
   const title = (body.title ?? row.title ?? "My Pattern").toString().slice(0, 120);
   const crop = body.crop as CropPercent | undefined;
-  const stitchWidth = body.stitchWidth ?? row.stitch_width_setting ?? 120;
-  const detailLevel = (body.detailLevel as string) || row.difficulty_mode || "balanced";
   const fabricCount = body.fabricCount ?? row.fabric_count ?? 14;
+
+  let stitchWidth: number;
+  let detailLevel: string;
+  let pricingTierId: string;
+
+  const normalizedPricingTier =
+    body.pricingTier != null && body.pricingTier !== "" ? normalizePricingTierId(body.pricingTier) : null;
+
+  if (normalizedPricingTier) {
+    const tierDef = getPricingTierById(normalizedPricingTier);
+    if (!tierDef) return NextResponse.json({ error: "Invalid pricing tier" }, { status: 400 });
+    stitchWidth = tierDef.engine.stitchWidth;
+    detailLevel = tierDef.engine.detailLevel;
+    pricingTierId = normalizedPricingTier;
+  } else {
+    stitchWidth = Number(body.stitchWidth ?? row.stitch_width_setting ?? 120);
+    detailLevel = (body.detailLevel as string) || row.difficulty_mode || "balanced";
+    if (!isDetailLevel(detailLevel)) {
+      return NextResponse.json({ error: "Invalid detail level" }, { status: 400 });
+    }
+    pricingTierId = inferPricingTierFromEngine(detailLevel, stitchWidth);
+  }
 
   if (!crop || typeof crop.x !== "number") {
     return NextResponse.json({ error: "Crop is required" }, { status: 400 });
@@ -123,7 +146,7 @@ async function handlePatch(request: Request, ctx: { params: Promise<{ id: string
     title,
     crop,
     stitchWidth: Number(stitchWidth),
-    detailLevel,
+    detailLevel: detailLevel as DetailLevelId,
     fabricCount: Number(fabricCount),
   };
 
@@ -161,6 +184,7 @@ async function handlePatch(request: Request, ctx: { params: Promise<{ id: string
         stitch_width_setting: settings.stitchWidth,
         total_stitches: pattern.totalStitches,
         stitchability_score: pattern.stitchabilityScore,
+        pricing_tier: pricingTierId,
         crop: settings.crop as unknown as Record<string, number>,
         grid_json: gridPayload as unknown as Record<string, unknown>,
         generation_error: null,

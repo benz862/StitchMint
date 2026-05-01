@@ -4,13 +4,8 @@ import { useCallback, useMemo, useState } from "react";
 import Cropper, { Area, type MediaSize } from "react-easy-crop";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  DETAIL_LEVELS,
-  FABRIC_COUNTS,
-  STITCH_WIDTHS,
-  type DetailLevelId,
-  type StitchWidthId,
-} from "@/lib/constants";
+import { PRICING_TIERS, type PricingTierId } from "@/config/pricing";
+import { FABRIC_COUNTS } from "@/lib/constants";
 import { finishedSizeInches, inchesToCm } from "@/lib/measurements";
 import type { CropPercent } from "@/lib/pattern-engine";
 import { readApiJson } from "@/lib/read-api-json";
@@ -21,7 +16,7 @@ const ASPECT_PRESETS = [
   { id: "square", label: "Square", value: 1 },
 ] as const;
 
-type Step = 1 | 2 | 3 | 4 | 5 | 6;
+type Step = 1 | 2 | 3 | 4 | 5;
 
 function clampPercent(n: number) {
   return Math.max(0, Math.min(100, n));
@@ -42,11 +37,13 @@ export function CreateFlow() {
   const [aspect, setAspect] = useState<(typeof ASPECT_PRESETS)[number]["value"]>(3 / 4);
   const [mediaSize, setMediaSize] = useState<MediaSize | null>(null);
 
-  const [detail, setDetail] = useState<DetailLevelId>("balanced");
-  const [widthId, setWidthId] = useState<StitchWidthId>("medium");
+  const [pricingTierId, setPricingTierId] = useState<PricingTierId>("plus");
   const [fabric, setFabric] = useState<14 | 16 | 18>(16);
 
-  const stitchWidth = useMemo(() => STITCH_WIDTHS.find((w) => w.id === widthId)?.stitches ?? 120, [widthId]);
+  const stitchWidth = useMemo(() => {
+    const tier = PRICING_TIERS.find((t) => t.id === pricingTierId);
+    return tier?.engine.stitchWidth ?? 120;
+  }, [pricingTierId]);
   const stitchHeightGuess = useMemo(() => {
     const ar = aspect === 1 ? 1 : aspect > 1 ? 3 / 4 : 4 / 3;
     return Math.max(40, Math.round(stitchWidth / ar));
@@ -115,8 +112,7 @@ export function CreateFlow() {
         body: JSON.stringify({
           title: "My Pattern",
           crop: cropPct,
-          stitchWidth,
-          detailLevel: detail,
+          pricingTier: pricingTierId,
           fabricCount: fabric,
         }),
       });
@@ -136,7 +132,7 @@ export function CreateFlow() {
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <div className="mb-8 flex items-center justify-between gap-4">
         <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-muted">Step {step} of 6</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-muted">Step {step} of 5</p>
           <h1 className="font-serif text-3xl text-ink sm:text-4xl">Create your pattern</h1>
         </div>
         <Link href="/" className="text-sm text-muted hover:text-ink">
@@ -226,29 +222,36 @@ export function CreateFlow() {
 
         {step === 3 && (
           <div className="space-y-4">
-            <p className="text-muted">How much detail should we keep?</p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {(Object.keys(DETAIL_LEVELS) as DetailLevelId[]).map((id) => {
-                const d = DETAIL_LEVELS[id];
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => {
-                      setDetail(id);
-                      const def = STITCH_WIDTHS.find((w) => w.stitches === d.defaultStitchWidth);
-                      if (def) setWidthId(def.id);
-                    }}
-                    className={`rounded-2xl border px-4 py-4 text-left transition ${
-                      detail === id ? "border-ink bg-cream shadow-sm" : "border-line bg-cream/40 hover:border-accent-soft"
-                    }`}
-                  >
-                    <p className="font-medium text-ink">{d.label}</p>
-                    <p className="mt-1 text-sm text-muted">{d.description}</p>
-                    <p className="mt-2 text-xs text-muted">{d.colorHint}</p>
-                  </button>
-                );
-              })}
+            <p className="text-muted">Choose your pattern tier. This is what you will pay when you unlock the full chart.</p>
+            <div className="grid gap-3 sm:grid-cols-1">
+              {PRICING_TIERS.map((tier) => (
+                <button
+                  key={tier.id}
+                  type="button"
+                  onClick={() => setPricingTierId(tier.id)}
+                  className={`rounded-2xl border px-4 py-4 text-left transition ${
+                    pricingTierId === tier.id
+                      ? "border-ink bg-cream shadow-sm ring-1 ring-ink/10"
+                      : tier.featured
+                        ? "border-accent-soft/80 bg-cream/50 hover:border-accent-soft"
+                        : "border-line bg-cream/40 hover:border-accent-soft"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <p className="font-medium text-ink">{tier.name}</p>
+                    <p className="font-serif text-lg text-ink">{tier.priceLabel}</p>
+                  </div>
+                  {tier.featured ? (
+                    <p className="mt-1 text-xs font-medium uppercase tracking-wide text-accent-soft">Most popular</p>
+                  ) : null}
+                  <p className="mt-2 text-sm text-muted">{tier.description}</p>
+                  <ul className="mt-3 list-inside list-disc space-y-1 text-xs text-muted">
+                    {tier.features.map((f) => (
+                      <li key={f}>{f}</li>
+                    ))}
+                  </ul>
+                </button>
+              ))}
             </div>
             <div className="flex justify-between pt-4">
               <button type="button" className="rounded-full px-5 py-3 text-sm text-muted hover:bg-cream-deep/80" onClick={() => setStep(2)}>
@@ -262,36 +265,6 @@ export function CreateFlow() {
         )}
 
         {step === 4 && (
-          <div className="space-y-4">
-            <p className="text-muted">How wide should the chart be?</p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {STITCH_WIDTHS.map((w) => (
-                <button
-                  key={w.id}
-                  type="button"
-                  onClick={() => setWidthId(w.id)}
-                  className={`rounded-2xl border px-4 py-4 text-left ${
-                    widthId === w.id ? "border-ink bg-cream shadow-sm" : "border-line bg-cream/40 hover:border-accent-soft"
-                  }`}
-                >
-                  <p className="font-medium text-ink">
-                    {w.label} · {w.stitches} stitches wide
-                  </p>
-                </button>
-              ))}
-            </div>
-            <div className="flex justify-between pt-4">
-              <button type="button" className="rounded-full px-5 py-3 text-sm text-muted hover:bg-cream-deep/80" onClick={() => setStep(3)}>
-                Back
-              </button>
-              <button type="button" className="rounded-full bg-ink px-6 py-3 text-sm text-cream" onClick={() => setStep(5)}>
-                Continue
-              </button>
-            </div>
-          </div>
-        )}
-
-        {step === 5 && (
           <div className="space-y-4">
             <p className="text-muted">Choose your fabric. We will show the finished size.</p>
             <div className="grid gap-3">
@@ -313,32 +286,33 @@ export function CreateFlow() {
               ))}
             </div>
             <div className="flex justify-between pt-4">
-              <button type="button" className="rounded-full px-5 py-3 text-sm text-muted hover:bg-cream-deep/80" onClick={() => setStep(4)}>
+              <button type="button" className="rounded-full px-5 py-3 text-sm text-muted hover:bg-cream-deep/80" onClick={() => setStep(3)}>
                 Back
               </button>
-              <button type="button" className="rounded-full bg-ink px-6 py-3 text-sm text-cream" onClick={() => setStep(6)}>
+              <button type="button" className="rounded-full bg-ink px-6 py-3 text-sm text-cream" onClick={() => setStep(5)}>
                 Continue
               </button>
             </div>
           </div>
         )}
 
-        {step === 6 && (
+        {step === 5 && (
           <div className="space-y-4">
             <p className="text-muted">We will stitch your preview quietly on our servers. This can take a moment.</p>
             <ul className="space-y-2 rounded-2xl border border-line bg-cream/50 px-4 py-4 text-sm text-muted">
               <li>
-                <span className="text-ink">Detail:</span> {DETAIL_LEVELS[detail].label}
+                <span className="text-ink">Tier:</span> {PRICING_TIERS.find((t) => t.id === pricingTierId)?.name} (
+                {PRICING_TIERS.find((t) => t.id === pricingTierId)?.priceLabel})
               </li>
               <li>
-                <span className="text-ink">Width:</span> {stitchWidth} stitches
+                <span className="text-ink">Chart width:</span> {stitchWidth} stitches
               </li>
               <li>
                 <span className="text-ink">Fabric:</span> {fabric}-count Aida
               </li>
             </ul>
             <div className="flex justify-between pt-4">
-              <button type="button" className="rounded-full px-5 py-3 text-sm text-muted hover:bg-cream-deep/80" onClick={() => setStep(5)}>
+              <button type="button" className="rounded-full px-5 py-3 text-sm text-muted hover:bg-cream-deep/80" onClick={() => setStep(4)}>
                 Back
               </button>
               <button

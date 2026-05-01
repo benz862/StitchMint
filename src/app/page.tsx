@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { StitchMintLogo } from "@/components/StitchMintLogo";
+import Hero from "@/components/Hero";
+import { PRICING_TIERS } from "@/config/pricing";
 
 const faqs = [
   {
@@ -19,42 +19,13 @@ const faqs = [
 export default function HomePage() {
   return (
     <div>
-      <section className="mx-auto max-w-6xl px-4 pb-16 pt-10 sm:px-6 sm:pt-14">
-        <div className="mx-auto max-w-3xl text-center">
-          <Link
-            href="/"
-            className="mx-auto mb-10 inline-flex items-center justify-center rounded-3xl bg-card/90 px-6 py-6 shadow-[0_8px_40px_rgba(44,36,22,0.08)] ring-1 ring-line/70 transition hover:ring-accent-soft/50 sm:mb-12 sm:px-10 sm:py-8"
-            aria-label="StitchMint"
-          >
-            <StitchMintLogo variant="hero" className="drop-shadow-sm" />
-          </Link>
-          <p className="text-xs uppercase tracking-[0.28em] text-muted">Premium cross-stitch patterns</p>
-          <h1 className="mt-4 font-serif text-4xl leading-tight text-ink sm:text-5xl">
-            Turn any photo into a beautiful cross-stitch pattern
-          </h1>
-          <p className="mt-5 text-lg leading-relaxed text-muted">
-            Upload a favorite photo and receive a printable cross-stitch chart with DMC thread colors, symbols, fabric size, and a
-            shopping list.
-          </p>
-          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Link
-              href="/create"
-              className="inline-flex w-full items-center justify-center rounded-full bg-ink px-8 py-3.5 text-sm font-medium text-cream shadow-sm transition hover:opacity-95 sm:w-auto"
-            >
-              Create my pattern
-            </Link>
-            <Link href="/my-patterns" className="text-sm text-muted underline-offset-4 hover:text-ink hover:underline">
-              View saved patterns
-            </Link>
-          </div>
-        </div>
-      </section>
+      <Hero />
 
       <section className="border-y border-line/80 bg-card/70 py-16">
         <div className="mx-auto grid max-w-6xl gap-10 px-4 sm:grid-cols-3 sm:px-6">
           {[
             { t: "Upload", d: "Choose a clear photo you love — pets, people, places, keepsakes." },
-            { t: "Refine", d: "Crop gently, pick a size and fabric count, and preview the stitch plan." },
+            { t: "Refine", d: "Crop gently, pick one of three pattern tiers, choose fabric count, and preview the stitch plan." },
             { t: "Stitch", d: "Unlock the full chart, print at home, and enjoy calm stitching time." },
           ].map((s) => (
             <div key={s.t} className="rounded-3xl border border-line bg-cream/60 p-6 shadow-sm">
@@ -94,17 +65,25 @@ export default function HomePage() {
         <div className="mx-auto flex max-w-6xl flex-col gap-8 px-4 sm:flex-row sm:items-end sm:justify-between sm:px-6">
           <div>
             <h2 className="font-serif text-3xl text-ink">Pricing</h2>
-            <p className="mt-3 max-w-xl text-sm text-muted">Simple today. Room for lovely extras later.</p>
+            <p className="mt-3 max-w-xl text-sm text-muted">
+              Three tiers — Basic, Premium, and Pro — one checkout each. The tier you pick when you create your pattern is the price you
+              will see at unlock; names match your Stripe product prices (pattern_basic, pattern_premium, pattern_pro).
+            </p>
           </div>
-          <div className="rounded-3xl border border-line bg-cream/70 p-6 shadow-sm sm:min-w-[280px]">
-            <p className="text-xs uppercase tracking-[0.2em] text-muted">Single pattern</p>
-            <p className="mt-2 font-serif text-4xl text-ink">
-              ${process.env.NEXT_PUBLIC_PATTERN_PRICE_LABEL ?? "9.95"}
-            </p>
-            <p className="mt-2 text-sm text-muted">One-time download · personal use</p>
-            <p className="mt-4 text-xs text-muted">
-              Coming soon: premium large charts, cleanup bundles, commercial licenses, and printed mailing.
-            </p>
+          <div className="w-full max-w-md space-y-4 rounded-3xl border border-line bg-cream/70 p-6 shadow-sm sm:min-w-[300px]">
+            {PRICING_TIERS.map((tier) => (
+              <div
+                key={tier.id}
+                className={`border-b border-line/60 pb-4 last:border-0 last:pb-0 ${tier.featured ? "rounded-xl bg-cream/80 px-3 py-2 -mx-1" : ""}`}
+              >
+                <div className="flex items-baseline justify-between gap-4">
+                  <p className="text-sm font-medium text-ink">{tier.name}</p>
+                  <p className="font-serif text-2xl text-ink">{tier.priceLabel}</p>
+                </div>
+                <p className="mt-1 text-xs text-muted">{tier.description}</p>
+              </div>
+            ))}
+            <p className="pt-1 text-xs text-muted">One-time download · personal use.</p>
           </div>
         </div>
       </section>

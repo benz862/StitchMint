@@ -1,12 +1,23 @@
 import { NextResponse } from "next/server";
 import { getPublicAppUrl } from "@/lib/app-url";
-import { DEFAULT_PATTERN_PRICE_CENTS } from "@/lib/constants";
+import { buildCheckoutLineItem, getPricingTierIdFromPatternRow } from "@/lib/pricing-checkout";
+import { resolveStripeProductId } from "@/config/pricing";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getStripe } from "@/lib/stripe";
 
 export const runtime = "nodejs";
 
 export async function POST(_request: Request, ctx: { params: Promise<{ id: string }> }) {
+  try {
+    return await postCheckout(ctx);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Checkout failed";
+    console.error("[POST /api/patterns/[id]/checkout]", e);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+async function postCheckout(ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const supabase = await createSupabaseServerClient();
   const {
@@ -22,35 +33,39 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
   }
 
   const appUrl = getPublicAppUrl().origin;
-  const stripePriceId = process.env.STRIPE_PRICE_ID?.trim();
-  const priceCents = Number(process.env.PATTERN_PRICE_CENTS ?? DEFAULT_PATTERN_PRICE_CENTS);
-
-  const lineItems = stripePriceId
-    ? [{ price: stripePriceId, quantity: 1 as const }]
-    : [
-        {
-          quantity: 1 as const,
-          price_data: {
-            currency: "usd" as const,
-            unit_amount: priceCents,
-            product_data: {
-              name: "StitchMint pattern download",
-              description: "Printable chart, legend, and shopping list (PDF + preview image).",
-            },
-          },
-        },
-      ];
+  const tierId = getPricingTierIdFromPatternRow(row);
+  const lineItems = [buildCheckoutLineItem(tierId)];
+  const stripeProductId = resolveStripeProductId(tierId);
 
   const stripe = getStripe();
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    line_items: lineItems,
-    success_url: `${appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${appUrl}/preview/${id}`,
-    metadata: { patternId: id },
-    client_reference_id: id,
-    customer_email: user.email ?? undefined,
-  });
+  let session;
+  try {
+    session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      line_items: lineItems,
+      success_url: `${appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${appUrl}/preview/${id}`,
+      metadata: {
+        patternId: id,
+        pricingTier: tierId,
+        ...(stripeProductId ? { stripeProductId } : {}),
+      },
+      client_reference_id: id,
+      customer_email: user.email ?? undefined,
+    });
+  } catch (stripeErr: unknown) {
+    const msg =
+      stripeErr && typeof stripeErr === "object" && "message" in stripeErr
+        ? String((stripeErr as { message?: string }).message)
+        : "Stripe could not start checkout.";
+    console.error("[Stripe checkout.sessions.create]", stripeErr);
+    return NextResponse.json(
+      {
+        error: `${msg} Check Vercel env: STRIPE_SECRET_KEY, STRIPE_PRICE_ID_BASIC / PLUS / PRO (or legacy STRIPE_PRICE_ID / STRIPE_PRICE_ID_STARTER / PREMIUM), and one-time USD prices.`,
+      },
+      { status: 502 },
+    );
+  }
 
   await supabase
     .from("patterns")

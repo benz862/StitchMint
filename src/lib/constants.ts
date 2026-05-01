@@ -59,8 +59,6 @@ export const CHART_PAGE_LARGE = { cols: 40, rows: 40, overlap: 2 };
 
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
-export const DEFAULT_PATTERN_PRICE_CENTS = 995;
-
 export const DOWNLOAD_EXPIRY_DAYS = 7;
 
 /** Symbol pool: avoids easily confused glyphs. */
