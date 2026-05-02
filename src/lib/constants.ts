@@ -61,6 +61,9 @@ export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
 export const DOWNLOAD_EXPIRY_DAYS = 7;
 
-/** Symbol pool: avoids easily confused glyphs. */
+/**
+ * Chart symbols (one per DMC in the palette). Non-letters first so cells read as marks, not initials.
+ * Still includes letters for large palettes. Omits ambiguous pairs like 0/O, 1/l/I.
+ */
 export const SYMBOL_POOL =
-  "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789@#%&*+=?~[]";
+  "@#%&*+=?~^/23456789<>()[]{}!:;$ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";

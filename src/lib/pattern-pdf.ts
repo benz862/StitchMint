@@ -71,6 +71,24 @@ function drawCoverPageBackground(doc: PdfDoc, bg: CoverBackgroundImage) {
   doc.restore();
 }
 
+/** When a raster template is behind the cover, draw an opaque card so type and thumbnails do not print on the artwork. */
+function drawCoverContentPanel(doc: PdfDoc) {
+  const inset = 32;
+  const top = 24;
+  /** Nearly full page so stats + disclaimer stay on the card, not on the template. */
+  const panelH = doc.page.height - top - 32;
+  doc.save();
+  doc.fillOpacity(0.96);
+  doc.fillColor("#fdf9f3");
+  doc.roundedRect(inset, top, doc.page.width - inset * 2, panelH, 12).fill();
+  doc.restore();
+  doc.save();
+  doc.strokeColor("#e8dfd4").lineWidth(0.75).roundedRect(inset, top, doc.page.width - inset * 2, panelH, 12).stroke();
+  doc.restore();
+  doc.fillOpacity(1);
+  doc.y = top + 20;
+}
+
 function drawCover(
   doc: PdfDoc,
   meta: PatternPdfMeta,
@@ -82,9 +100,11 @@ function drawCover(
 
   if (coverBackground) {
     drawCoverPageBackground(doc, coverBackground);
+    drawCoverContentPanel(doc);
   }
 
-  doc.fontSize(26).fillColor("#2c2416").text("StitchMint Pattern", { align: "center" });
+  doc.fillColor("#2c2416");
+  doc.fontSize(26).text("StitchMint Pattern", { align: "center" });
   doc.moveDown(0.4);
   doc.fontSize(18).text(meta.title, { align: "center" });
   doc.moveDown(1);
