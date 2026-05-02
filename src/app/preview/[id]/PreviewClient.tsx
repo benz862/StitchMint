@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { demoPaymentLinkUrl } from "@/config/demo-checkout";
 import { finishedSizeInches, inchesToCm } from "@/lib/measurements";
 import { readApiJson } from "@/lib/read-api-json";
 
@@ -85,6 +86,11 @@ export function PreviewClient() {
     setBusy(true);
     setError(null);
     try {
+      const demoLink = demoPaymentLinkUrl();
+      if (demoLink) {
+        window.location.href = demoLink;
+        return;
+      }
       const res = await fetch(`/api/patterns/${id}/checkout`, { method: "POST" });
       const json = await readApiJson<{ error?: string; url?: string }>(res);
       if (!res.ok) throw new Error(json.error ?? "Checkout could not start");

@@ -2,6 +2,8 @@
 
 import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { demoPaymentLinkUrl } from "@/config/demo-checkout";
+import { readApiJson } from "@/lib/read-api-json";
 
 export default function CheckoutPage() {
   const params = useParams<{ id: string }>();
@@ -10,8 +12,14 @@ export default function CheckoutPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      const demoLink = demoPaymentLinkUrl();
+      if (demoLink) {
+        window.location.href = demoLink;
+        return;
+      }
+
       const res = await fetch(`/api/patterns/${params.id}/checkout`, { method: "POST" });
-      const json = await res.json();
+      const json = await readApiJson<{ error?: string; url?: string }>(res);
       if (cancelled) return;
       if (res.ok && json.url) {
         window.location.href = json.url as string;
