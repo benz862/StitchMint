@@ -9,8 +9,7 @@
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { PRICING_TIERS } from "../src/config/pricing";
-import { buildZipForPattern, runPatternGeneration, type PatternSettings } from "../src/lib/pattern-service";
+import { buildTierSampleZipEntries } from "../src/lib/tier-sample-pack";
 
 async function main() {
   const imagePath = process.argv[2];
@@ -25,20 +24,11 @@ async function main() {
 
   await mkdir(outDir, { recursive: true });
 
-  for (const tier of PRICING_TIERS) {
-    const settings: PatternSettings = {
-      title: `${baseTitle} — ${tier.name}`,
-      crop: { x: 0, y: 0, width: 100, height: 100 },
-      stitchWidth: tier.engine.stitchWidth,
-      detailLevel: tier.engine.detailLevel,
-      fabricCount: 14,
-    };
-    process.stdout.write(`Generating ${tier.id} (${tier.engine.stitchWidth}w · ${tier.engine.detailLevel})… `);
-    const pattern = await runPatternGeneration(imageBuffer, settings);
-    const zip = await buildZipForPattern(imageBuffer, settings, pattern);
-    const fileName = tier.id === "plus" ? "premium.zip" : `${tier.id}.zip`;
-    const outFile = path.join(outDir, fileName);
-    await writeFile(outFile, zip);
+  const entries = await buildTierSampleZipEntries(imageBuffer, baseTitle);
+  for (const { filename, data } of entries) {
+    process.stdout.write(`Writing ${filename}… `);
+    const outFile = path.join(outDir, filename);
+    await writeFile(outFile, data);
     console.log(outFile);
   }
   console.log(`Done. Open ${outDir}/`);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { AdminDemoTierSamples } from "./AdminDemoTierSamples";
 
 type Pattern = Record<string, unknown>;
 type Order = Record<string, unknown>;
@@ -40,6 +41,8 @@ export function AdminDashboard() {
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <h1 className="font-serif text-3xl text-ink">Admin</h1>
       <p className="mt-2 text-sm text-muted">Patterns, orders, and light operations.</p>
+
+      <AdminDemoTierSamples />
 
       <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-end">
         <div className="flex-1">
