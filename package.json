@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "sample-zips": "tsx scripts/generate-sample-zips.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",
@@ -22,6 +23,7 @@
     "uuid": "^14.0.0"
   },
   "devDependencies": {
+    "tsx": "^4.21.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/pdfkit": "^0.17.6",
