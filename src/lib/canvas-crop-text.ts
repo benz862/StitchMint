@@ -180,9 +180,18 @@ function drawStraightAtAnchor(
   ctx.font = buildFontCss(typography, fontSize);
   const lineH = fontSize * 1.28;
   const totalH = lines.length * lineH;
-  const startY = ay - totalH / 2 + fontSize * 0.72;
+  /**
+   * Use textBaseline = "middle" so each call to fillText/strokeText puts the line's vertical CENTER
+   * at the supplied y. This matches how the live editor positions its text box (CSS centers the box
+   * at anchorY via translate(-50%, -50%)). Previously we used "alphabetic" with a 0.72*fontSize fudge,
+   * which placed the visual middle of the glyphs ~0.27*fontSize ABOVE anchorY — so titles drifted up
+   * relative to the editor preview by an amount proportional to font size, becoming very visible at
+   * server-scale font sizes (e.g. 47px for sizeScale 0.55) while invisible in the tiny editor.
+   */
   ctx.textAlign = "center";
-  ctx.textBaseline = "alphabetic";
+  ctx.textBaseline = "middle";
+  /** y-center of the first line: top of the text block is at ay - totalH/2; first line center sits half a line below that. */
+  const firstLineCenterY = ay - totalH / 2 + lineH / 2;
 
   /**
    * Outline is opt-in: clean fill by default; thin contrasting stroke when the user enables it (helps
@@ -193,7 +202,7 @@ function drawStraightAtAnchor(
   const outlineWidth = Math.max(1, fontSize * 0.06);
 
   lines.forEach((line, i) => {
-    const y = startY + i * lineH;
+    const y = firstLineCenterY + i * lineH;
     if (wantsOutline) {
       ctx.save();
       ctx.lineJoin = "round";
@@ -207,9 +216,13 @@ function drawStraightAtAnchor(
     ctx.fillText(line, ax, y);
     if (typography.underline) {
       ctx.save();
+      /**
+       * drawUnderline assumes y is the baseline; with textBaseline="middle" the baseline of this line
+       * sits ~0.35*fontSize below y, so shift the underline reference accordingly.
+       */
       ctx.lineWidth = Math.max(1.5, fontSize * 0.07);
       ctx.fillStyle = color;
-      drawUnderline(ctx, ax, y, line, fontSize);
+      drawUnderline(ctx, ax, y + fontSize * 0.35, line, fontSize);
       ctx.restore();
     }
   });

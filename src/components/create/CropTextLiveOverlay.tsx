@@ -19,6 +19,22 @@ type PointerDragHandlers = {
   onPointerCancel: (e: React.PointerEvent) => void;
 };
 
+/**
+ * Mirrors the server's font sizing in `canvas-crop-text.ts` (fitFontSize + scaledFontSize).
+ *  - Server: baseFit ≈ max(16, maxBand * 0.22) where maxBand = cropBuffer.height * 0.4
+ *           → baseFit ≈ cropBuffer.height * 0.088
+ *           Then scaled by the user's sizeScale.
+ *  - Client: same formula but using the live crop frame's pixel height. Doing this means the live
+ *    overlay shows text at the same proportional size the server will rasterize, so dragging in
+ *    the editor produces a true WYSIWYG anchor — no more "looks centered on the helmet in editor
+ *    but lands on the forehead in the preview".
+ */
+function proportionalFontSizePx(frameHeight: number, sizeScale: number): number {
+  const maxBand = frameHeight * 0.4;
+  const baseFit = Math.max(16, Math.round(maxBand * 0.22));
+  return Math.max(8, Math.round(baseFit * sizeScale));
+}
+
 export function CropTextLiveOverlay({
   text,
   anchorX,
@@ -26,6 +42,7 @@ export function CropTextLiveOverlay({
   typography,
   color,
   dragHandlers,
+  frameSize,
 }: {
   text: string;
   anchorX: number;
@@ -33,6 +50,8 @@ export function CropTextLiveOverlay({
   typography: TextTypography;
   color: string;
   dragHandlers: PointerDragHandlers;
+  /** Live pixel size of the crop frame; when present, font scales to match server output. */
+  frameSize?: { width: number; height: number } | null;
 }) {
   const lines = useMemo(() => linesFromText(text), [text]);
   if (lines.length === 0) return null;
@@ -54,12 +73,21 @@ export function CropTextLiveOverlay({
   })();
   const outlineColor = isLight ? "#000000" : "#ffffff";
 
+  /**
+   * Prefer a frame-proportional font size (matches the server). Fall back to the legacy
+   * viewport-based clamp if the frame size hasn't been measured yet (very first paint).
+   */
+  const fontSizeStyle =
+    frameSize && frameSize.height > 0
+      ? `${proportionalFontSizePx(frameSize.height, sizeS)}px`
+      : `clamp(${11 * sizeS}px, ${2.9 * sizeS}vmin, ${28 * sizeS}px)`;
+
   return (
     <div
       role="group"
       tabIndex={0}
       aria-label="Text preview — drag to move"
-      className="absolute z-[25] max-h-[70%] min-h-[2rem] min-w-[3rem] max-w-[min(92%,28rem)] cursor-grab touch-none select-none overflow-y-auto rounded-lg px-2 py-1 text-center active:cursor-grabbing"
+      className="absolute z-[25] max-h-[70%] min-h-[2rem] min-w-[3rem] max-w-[min(92%,28rem)] cursor-grab touch-none select-none rounded-lg px-2 py-1 text-center active:cursor-grabbing"
       style={{
         left: `${anchorX}%`,
         top: `${anchorY}%`,
@@ -71,7 +99,7 @@ export function CropTextLiveOverlay({
         textDecoration: typography.underline ? "underline" : "none",
         color: safeColor,
         WebkitTextStroke: wantsOutline ? `1px ${outlineColor}` : undefined,
-        fontSize: `clamp(${11 * sizeS}px, ${2.9 * sizeS}vmin, ${28 * sizeS}px)`,
+        fontSize: fontSizeStyle,
         lineHeight: 1.28,
         whiteSpace: "pre-wrap",
         wordBreak: "break-word",

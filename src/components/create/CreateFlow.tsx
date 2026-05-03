@@ -135,8 +135,41 @@ export function CreateFlow() {
   const [textColor, setTextColor] = useState("#ffffff");
 
   const cropWrapRef = useRef<HTMLDivElement>(null);
+  /**
+   * Inner element sized + positioned to exactly match the crop frame inside the cropper container.
+   * The text overlay lives inside this element so anchorX/Y are percentages of the *crop frame*
+   * (the same coord system the server uses when rasterizing the overlay onto the crop buffer).
+   * Without this, drags were measured against the outer container, so a position the user perceived
+   * as "above the subject's head" got saved as a value that the server later applied somewhere
+   * inside the image (e.g., over the face) once the crop frame became smaller than the container.
+   */
+  const cropFrameRef = useRef<HTMLDivElement>(null);
   const textAnchorRef = useRef({ x: 50, y: 82 });
   const textDragRef = useRef<{ id: number; ox: number; oy: number; sx: number; sy: number } | null>(null);
+  /**
+   * Live pixel size of the crop frame element (the actual square/portrait/landscape inside the
+   * cropper container). We feed this into the live text overlay so its font size matches the
+   * server's rasterizer output proportionally — without it, the editor renders the title in tiny
+   * CSS clamp() pixels while the server renders it 3-5x larger, so what you visually drag in the
+   * editor lands somewhere unexpected once the bigger server text is centered on the same anchor.
+   */
+  const [cropFrameSize, setCropFrameSize] = useState<{ width: number; height: number } | null>(null);
+
+  useEffect(() => {
+    const el = cropFrameRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const rect = entry.contentRect;
+      setCropFrameSize({ width: rect.width, height: rect.height });
+    });
+    ro.observe(el);
+    /** Seed once synchronously so first paint already has a real size. */
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) setCropFrameSize({ width: r.width, height: r.height });
+    return () => ro.disconnect();
+  }, [aspect, imageUrl]);
 
   useEffect(() => {
     textAnchorRef.current = { x: textAnchorX, y: textAnchorY };
@@ -152,8 +185,10 @@ export function CreateFlow() {
 
   const onTextDragMove = useCallback((e: React.PointerEvent) => {
     const d = textDragRef.current;
-    if (!d || d.id !== e.pointerId || !cropWrapRef.current) return;
-    const r = cropWrapRef.current.getBoundingClientRect();
+    if (!d || d.id !== e.pointerId) return;
+    const target = cropFrameRef.current ?? cropWrapRef.current;
+    if (!target) return;
+    const r = target.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) return;
     const dx = ((e.clientX - d.sx) / r.width) * 100;
     const dy = ((e.clientY - d.sy) / r.height) * 100;
@@ -752,16 +787,44 @@ export function CreateFlow() {
                 onMediaLoaded={setMediaSize}
                 showGrid={false}
               />
-              {overlayText.trim().length > 0 ? (
-                <CropTextLiveOverlay
-                  text={overlayText}
-                  anchorX={textAnchorX}
-                  anchorY={textAnchorY}
-                  typography={textTypography}
-                  color={textColor}
-                  dragHandlers={textDragHandlers}
-                />
-              ) : null}
+              {/**
+                * Crop-frame overlay layer: a transparent wrapper sized exactly to the crop frame
+                * (same aspect ratio as the cropper, fit-inside the container, centered). The text
+                * overlay positions itself with `left/top: %` against THIS wrapper, so the saved
+                * anchorX/Y are in crop-frame coords — the same space the server uses when drawing
+                * the overlay onto the cropped image buffer. pointer-events-none on the wrapper
+                * keeps cropper drags working everywhere except over the overlay itself.
+                */}
+              <div className="pointer-events-none absolute inset-0 z-[24] flex items-center justify-center">
+                <div
+                  ref={cropFrameRef}
+                  className="pointer-events-none relative"
+                  style={{
+                    /**
+                     * Sizing trick: set ONLY height: 100% + aspect-ratio + max-width: 100%.
+                     * The browser computes width = aspect * height, then if that exceeds the
+                     * container width, max-width: 100% caps width and aspect-ratio recomputes
+                     * the height. Net effect: the largest rectangle of the requested aspect
+                     * that fits inside the container, centered (via the flex parent).
+                     */
+                    height: "100%",
+                    aspectRatio: `${aspect}`,
+                    maxWidth: "100%",
+                  }}
+                >
+                  {overlayText.trim().length > 0 ? (
+                    <CropTextLiveOverlay
+                      text={overlayText}
+                      anchorX={textAnchorX}
+                      anchorY={textAnchorY}
+                      typography={textTypography}
+                      color={textColor}
+                      dragHandlers={textDragHandlers}
+                      frameSize={cropFrameSize}
+                    />
+                  ) : null}
+                </div>
+              </div>
             </div>
             <div>
               <label className="text-sm text-muted">Zoom in or out</label>
