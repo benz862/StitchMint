@@ -638,21 +638,6 @@ export function CreateFlow() {
   const generatePreview = async () => {
     if (!patternId) return;
     const cropPct = percentCrop();
-    /**
-     * One-line diagnostic so we can verify in the browser console which fallback path produced the crop. If
-     * this prints {x:0, y:0, width:100, height:100} the deterministic fallbacks didn't fire and we know the
-     * imageUrl probe never resolved either.
-     */
-    if (typeof window !== "undefined") {
-      console.log("[generatePreview] PATCH crop", cropPct, {
-        userTouchedCrop,
-        hasPercent: !!croppedAreaPercent,
-        hasPixels: !!croppedAreaPixels,
-        hasMediaSize: !!mediaSize,
-        hasImageNatural: !!imageNaturalSize,
-        aspect,
-      });
-    }
     setBusy(true);
     setError(null);
     try {

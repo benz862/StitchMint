@@ -254,29 +254,8 @@ async function handlePatch(request: Request, ctx: { params: Promise<{ id: string
 
     const { data: signed } = await admin.storage.from("previews").createSignedUrl(previewPath, 60 * 30);
 
-    /**
-     * Echo a tiny diagnostic so the UI can confirm whether the overlay made it through to the engine without
-     * needing access to server logs. Strictly informational; safe to remove once the title round-trip is solid.
-     */
-    const overlayDiag = (() => {
-      const od = (row as { overlay_draft?: unknown }).overlay_draft;
-      if (od == null) return { present: false } as const;
-      if (typeof od === "object") {
-        const o = od as Record<string, unknown>;
-        return {
-          present: true,
-          v: o.v ?? null,
-          textLen: typeof o.text === "string" ? o.text.length : 0,
-          anchorX: typeof o.anchorX === "number" ? o.anchorX : null,
-          anchorY: typeof o.anchorY === "number" ? o.anchorY : null,
-        } as const;
-      }
-      return { present: true, v: null, textLen: 0, anchorX: null, anchorY: null } as const;
-    })();
-
     return NextResponse.json({
       previewUrl: signed?.signedUrl,
-      _overlayDiag: overlayDiag,
       stats: {
         stitchWidth: pattern.stitchWidth,
         stitchHeight: pattern.stitchHeight,

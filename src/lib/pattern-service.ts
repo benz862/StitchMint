@@ -45,23 +45,14 @@ export async function runPatternGeneration(
 ): Promise<PatternResult> {
   const overlaySpec = row ? parseOverlayDraftForServer(row.overlay_draft) : null;
   /**
-   * Diagnostic: surfaces silent dropouts where the row carries an `overlay_draft` blob but it failed to parse
-   * (wrong shape, missing version, empty text after trim) and the title quietly disappeared from the preview.
+   * Surface silent dropouts where the row carries an overlay_draft blob but it failed to parse
+   * (wrong shape, missing version, empty text after trim) — the user would otherwise see a preview
+   * with the title silently missing and no error to chase.
    */
   if (row?.overlay_draft && !overlaySpec) {
-    console.warn("[runPatternGeneration] overlay_draft present but parse returned null", {
+    console.warn("[pattern-service] overlay_draft present but parse returned null", {
       raw: row.overlay_draft,
     });
-  } else if (overlaySpec) {
-    console.log("[runPatternGeneration] applying overlay", {
-      text: overlaySpec.text,
-      anchorX: overlaySpec.anchorX,
-      anchorY: overlaySpec.anchorY,
-      color: overlaySpec.color,
-      typography: overlaySpec.typography,
-    });
-  } else {
-    console.log("[runPatternGeneration] no overlay on row");
   }
   return generatePattern({
     imageBuffer: originalBuffer,
