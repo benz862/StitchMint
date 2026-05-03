@@ -95,14 +95,13 @@ function drawTemplateBodyPanel(doc: PdfDoc) {
   const h = doc.page.height - y - PDF_MARGIN_PT;
   if (h < 120) return;
   doc.save();
-  doc.fillOpacity(0.94);
-  doc.fillColor("#fdf9f3");
+  doc.fillOpacity(1);
+  doc.fillColor("#ffffff");
   doc.roundedRect(x, y, w, h, 10).fill();
   doc.restore();
   doc.save();
-  doc.strokeColor("#e8dfd4").lineWidth(0.6).roundedRect(x, y, w, h, 10).stroke();
+  doc.strokeColor("#d8d8d8").lineWidth(0.6).roundedRect(x, y, w, h, 10).stroke();
   doc.restore();
-  doc.fillOpacity(1);
 }
 
 function contentStartYCover(hasRasterTemplate: boolean): number {
@@ -113,14 +112,14 @@ function contentStartYInner(): number {
   return PDF_MARGIN_PT + 6;
 }
 
-/** Cover page only: optional full-page raster + cream body panel (never call for page 2+). */
+/** Cover page only: optional full-page raster + white body panel (never call for page 2+). */
 function decorateCoverLetterPage(doc: PdfDoc, bg: CoverBackgroundImage | null) {
   if (bg) {
     drawCoverPageBackground(doc, bg);
     drawTemplateBodyPanel(doc);
   } else {
     doc.save();
-    doc.fillColor("#fdf9f3").rect(0, 0, doc.page.width, doc.page.height).fill();
+    doc.fillColor("#ffffff").rect(0, 0, doc.page.width, doc.page.height).fill();
     doc.restore();
   }
   doc.fillColor("#2c2416");
@@ -128,10 +127,10 @@ function decorateCoverLetterPage(doc: PdfDoc, bg: CoverBackgroundImage | null) {
   doc.y = contentStartYCover(!!bg);
 }
 
-/** Inner pages: flat fill only — does not accept cover art (avoids embedding the template more than once). */
+/** Inner pages: flat white fill — does not accept cover art (avoids embedding the template more than once). */
 function decorateInnerLetterPage(doc: PdfDoc) {
   doc.save();
-  doc.fillColor("#fdf9f3").rect(0, 0, doc.page.width, doc.page.height).fill();
+  doc.fillColor("#ffffff").rect(0, 0, doc.page.width, doc.page.height).fill();
   doc.restore();
   doc.fillColor("#2c2416");
   doc.x = PDF_MARGIN_PT;
@@ -356,7 +355,7 @@ function drawChartPages(doc: PdfDoc, grid: number[][], palette: PatternColorRow[
           doc.save();
           doc.lineWidth(overlap ? 0.85 : 0.35);
           doc.strokeColor(overlap ? "#c49a6c" : "#e3d9cf");
-          doc.fillColor("#fffdf8").rect(gx, gy, cell, cell).fill();
+          doc.fillColor("#ffffff").rect(gx, gy, cell, cell).fill();
           doc.rect(gx, gy, cell, cell).stroke();
           doc.restore();
           doc.fillColor("#1f1a14").fontSize(variant === "large" ? 8 : 5.5).text(col.symbol, gx, gy + cell * 0.28, {
