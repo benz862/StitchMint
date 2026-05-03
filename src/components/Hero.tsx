@@ -14,6 +14,10 @@ export default function Hero() {
             <p className="text-xs uppercase tracking-[0.28em] text-muted">Premium cross-stitch patterns</p>
             <h1 className="mt-3 font-serif text-4xl leading-tight text-ink sm:text-5xl">From Pattern to Perfect Stitches</h1>
             <p className="mt-3 text-lg leading-relaxed text-muted">Create, view, and print beautiful cross-stitch patterns.</p>
+            <p className="mt-3 text-sm leading-relaxed text-ink/90">
+              Every paid pattern includes <span className="font-medium text-ink">two chart PDFs</span> — regular print and large print —
+              same design, one price. Pick the layout that fits your eyes and your printer.
+            </p>
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row lg:justify-start">
               <Link
                 href="/create"

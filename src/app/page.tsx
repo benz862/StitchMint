@@ -11,6 +11,10 @@ const faqs = [
     a: "No. Everything happens in your browser. After purchase you download a simple ZIP with PDFs and a preview image.",
   },
   {
+    q: "Why are there two chart PDFs?",
+    a: "You receive the same pattern twice on purpose: one PDF packs more of the grid on each page (less paper), and the large-print PDF uses bigger symbols across more pages so it is easier to read. There is no second charge — it is included so you can pick what works best for you.",
+  },
+  {
     q: "What thread brand do you use?",
     a: "Charts use DMC Six-Strand Embroidery Floss numbers so you can shop confidently.",
   },
@@ -46,6 +50,12 @@ export default function HomePage() {
 
       <section className="mx-auto max-w-6xl px-4 pb-16 sm:px-6">
         <h2 className="font-serif text-3xl text-ink">What you receive</h2>
+        <p className="mt-4 max-w-3xl rounded-2xl border border-line bg-cream/50 px-4 py-3 text-sm leading-relaxed text-ink">
+          You get <span className="font-medium">two chart PDFs for one price</span> — the same pattern as{" "}
+          <span className="font-medium">Pattern-Regular.pdf</span> (fewer pages, smaller symbols) and{" "}
+          <span className="font-medium">Pattern-Large-Print.pdf</span> (more pages, easier to read). Same stitches and finished size; choose
+          whichever you prefer to stitch from.
+        </p>
         <ul className="mt-6 grid gap-4 sm:grid-cols-2">
           {[
             "Regular print chart PDF (easy to tile on a home printer)",
@@ -84,6 +94,9 @@ export default function HomePage() {
               </div>
             ))}
             <p className="pt-1 text-xs text-muted">One-time download · personal use.</p>
+            <p className="pt-2 text-xs leading-relaxed text-ink/90">
+              Includes both chart editions (regular + large print) at no extra charge — same pattern, two printable layouts.
+            </p>
           </div>
         </div>
       </section>

@@ -208,6 +208,11 @@ export function PreviewClient() {
               Download ZIP
             </button>
           ) : (
+            <>
+            <p className="rounded-2xl border border-line bg-cream/50 px-4 py-3 text-xs leading-relaxed text-muted">
+              Unlock includes <span className="font-medium text-ink">two chart PDFs</span> (regular + large print) for the same pattern — no
+              extra fee. Pick the version that is easiest for you to read and print.
+            </p>
             <button
               type="button"
               disabled={busy}
@@ -220,6 +225,7 @@ export function PreviewClient() {
                   ? `Unlock ${checkoutSummary.productName} — $${checkoutSummary.priceLabel}`
                   : "Unlock full pattern"}
             </button>
+            </>
           )}
 
           {error ? <p className="text-sm text-red-800">{error}</p> : null}

@@ -42,7 +42,7 @@ export async function sendPatternReadyEmail(input: {
     subject: `Your StitchMint pattern is ready — ${input.patternTitle}`,
     html: `
 <p>Thanks for your purchase.</p>
-<p><strong>${escapeHtml(input.patternTitle)}</strong> is paid and your download is ready.</p>
+<p><strong>${escapeHtml(input.patternTitle)}</strong> is paid and your download is ready. Your ZIP includes <strong>two chart PDFs</strong> (regular print and large print) of the same pattern — one price, pick whichever is easier to read.</p>
 <p>Open StitchMint while signed in with the <strong>same account you used to create the pattern</strong>, then:</p>
 <ul>
   <li><a href="${previewUrl}">Open your pattern preview</a> and tap <strong>Download ZIP</strong>, or</li>

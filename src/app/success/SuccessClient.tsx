@@ -57,7 +57,10 @@ export function SuccessClient() {
   return (
     <div className="mx-auto max-w-lg px-4 py-16 text-center">
       <h1 className="font-serif text-3xl text-ink">You are all set</h1>
-      <p className="mt-4 text-sm text-muted">Your pattern is packaged as a ZIP with PDFs and a preview image.</p>
+      <p className="mt-4 text-sm text-muted">
+        Your pattern is packaged as a ZIP with PDFs and a preview image — including{" "}
+        <span className="text-ink">both</span> a regular chart and a large-print chart of the same design, one price.
+      </p>
 
       {status === "working" && <p className="mt-8 text-sm text-muted">Preparing your download…</p>}
 
