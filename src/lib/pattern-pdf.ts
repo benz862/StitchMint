@@ -9,6 +9,12 @@ import { finishedSizeInches, inchesToCm, recommendedFabricCut } from "@/lib/meas
 type ChartVariant = "regular" | "large";
 type PdfDoc = InstanceType<typeof PDFDocument>;
 
+/** Left and right text margin (inches → points). */
+export const PDF_MARGIN_PT = 0.75 * 72;
+
+/** Vertical space reserved at top of each page for the logo on the raster template. */
+export const PDF_HEADER_RESERVED_PT = 126;
+
 export type PatternPdfMeta = {
   title: string;
   fabricCount: number;
@@ -31,8 +37,12 @@ function collectPdfBuffer(doc: PdfDoc): Promise<Buffer> {
 
 export type CoverBackgroundImage = { buffer: Buffer; width: number; height: number };
 
+function contentTextWidth(doc: PdfDoc): number {
+  return doc.page.width - 2 * PDF_MARGIN_PT;
+}
+
 /**
- * Raster cover for Pattern-*.pdf page 1 (Letter, “cover” scaling).
+ * Raster template for all pattern PDFs (Letter).
  * Priority: STITCHMINT_COVER_BG_PATH → public/StitchMint_Pattern_Template.jpg → pattern-cover-bg.*.
  */
 export async function loadPatternCoverBackground(): Promise<CoverBackgroundImage | null> {
@@ -71,48 +81,70 @@ function drawCoverPageBackground(doc: PdfDoc, bg: CoverBackgroundImage) {
   doc.restore();
 }
 
-/** When a raster template is behind the cover, draw an opaque card so type and thumbnails do not print on the artwork. */
-function drawCoverContentPanel(doc: PdfDoc) {
-  const inset = 32;
-  const top = 24;
-  /** Nearly full page so stats + disclaimer stay on the card, not on the template. */
-  const panelH = doc.page.height - top - 32;
+/** Readable panel below the header/logo band; keeps body text off busy artwork. */
+function drawTemplateBodyPanel(doc: PdfDoc) {
+  const x = PDF_MARGIN_PT;
+  const y = PDF_HEADER_RESERVED_PT;
+  const w = doc.page.width - 2 * PDF_MARGIN_PT;
+  const h = doc.page.height - y - PDF_MARGIN_PT;
+  if (h < 120) return;
   doc.save();
-  doc.fillOpacity(0.96);
+  doc.fillOpacity(0.94);
   doc.fillColor("#fdf9f3");
-  doc.roundedRect(inset, top, doc.page.width - inset * 2, panelH, 12).fill();
+  doc.roundedRect(x, y, w, h, 10).fill();
   doc.restore();
   doc.save();
-  doc.strokeColor("#e8dfd4").lineWidth(0.75).roundedRect(inset, top, doc.page.width - inset * 2, panelH, 12).stroke();
+  doc.strokeColor("#e8dfd4").lineWidth(0.6).roundedRect(x, y, w, h, 10).stroke();
   doc.restore();
   doc.fillOpacity(1);
-  doc.y = top + 20;
+}
+
+function contentStartY(hasTemplate: boolean): number {
+  return hasTemplate ? PDF_HEADER_RESERVED_PT + 12 : PDF_MARGIN_PT + 6;
+}
+
+/** First page or after addPage: background + panel + cursor for body text. */
+function decorateLetterPage(doc: PdfDoc, bg: CoverBackgroundImage | null) {
+  if (bg) {
+    drawCoverPageBackground(doc, bg);
+    drawTemplateBodyPanel(doc);
+  } else {
+    doc.save();
+    doc.fillColor("#fdf9f3").rect(0, 0, doc.page.width, doc.page.height).fill();
+    doc.restore();
+  }
+  doc.fillColor("#2c2416");
+  doc.x = PDF_MARGIN_PT;
+  doc.y = contentStartY(!!bg);
+}
+
+function addDecoratedLetterPage(doc: PdfDoc, bg: CoverBackgroundImage | null) {
+  doc.addPage({ size: "LETTER", margin: 0 });
+  decorateLetterPage(doc, bg);
 }
 
 function drawCover(
   doc: PdfDoc,
   meta: PatternPdfMeta,
   opts: { original?: Buffer; preview: Buffer },
-  coverBackground: CoverBackgroundImage | null,
+  _coverBackground: CoverBackgroundImage | null,
 ) {
+  const tw = contentTextWidth(doc);
   const { widthIn, heightIn } = finishedSizeInches(meta.stitchWidth, meta.stitchHeight, meta.fabricCount);
   const cut = recommendedFabricCut(widthIn, heightIn);
 
-  if (coverBackground) {
-    drawCoverPageBackground(doc, coverBackground);
-    drawCoverContentPanel(doc);
-  }
+  doc.fontSize(22).fillColor("#2c2416").text("StitchMint Pattern", PDF_MARGIN_PT, doc.y, {
+    width: tw,
+    align: "left",
+  });
+  doc.moveDown(0.35);
+  doc.fontSize(16).text(meta.title, { width: tw, align: "left" });
+  doc.moveDown(0.9);
 
-  doc.fillColor("#2c2416");
-  doc.fontSize(26).text("StitchMint Pattern", { align: "center" });
-  doc.moveDown(0.4);
-  doc.fontSize(18).text(meta.title, { align: "center" });
-  doc.moveDown(1);
-
-  const thumbW = 160;
-  const gap = 24;
-  const startX = (doc.page.width - thumbW * 2 - gap) / 2;
+  const thumbW = 138;
+  const gap = 20;
   const y = doc.y;
+  const startX = PDF_MARGIN_PT;
 
   if (opts.original) {
     try {
@@ -123,7 +155,7 @@ function drawCover(
   } else {
     doc.rect(startX, y, thumbW, thumbW).stroke("#d8cfc0");
   }
-  doc.fontSize(9).fillColor("#5c5346").text("Your photo", startX, y + thumbW + 6, { width: thumbW, align: "center" });
+  doc.fontSize(9).fillColor("#5c5346").text("Your photo", startX, y + thumbW + 6, { width: thumbW, align: "left" });
 
   try {
     doc.image(opts.preview, startX + thumbW + gap, y, {
@@ -135,38 +167,40 @@ function drawCover(
   } catch {
     doc.rect(startX + thumbW + gap, y, thumbW, thumbW).stroke("#d8cfc0");
   }
-  doc
-    .fontSize(9)
-    .text("Stitched preview", startX + thumbW + gap, y + thumbW + 6, { width: thumbW, align: "center" });
+  doc.fontSize(9).text("Stitched preview", startX + thumbW + gap, y + thumbW + 6, { width: thumbW, align: "left" });
 
-  doc.y = y + thumbW + 40;
-  doc.moveDown(1);
+  doc.y = y + thumbW + 36;
+  doc.x = PDF_MARGIN_PT;
+  doc.moveDown(0.5);
   doc.fontSize(11).fillColor("#2c2416");
-  doc.text(`Grid: ${meta.stitchWidth} × ${meta.stitchHeight} stitches`);
-  doc.text(`Fabric: ${meta.fabricCount}-count Aida`);
+  doc.text(`Grid: ${meta.stitchWidth} × ${meta.stitchHeight} stitches`, { width: tw, align: "left" });
+  doc.text(`Fabric: ${meta.fabricCount}-count Aida`, { width: tw, align: "left" });
   doc.text(
     `Finished size: ${widthIn.toFixed(2)} in × ${heightIn.toFixed(2)} in (${inchesToCm(widthIn).toFixed(1)} × ${inchesToCm(heightIn).toFixed(1)} cm)`,
+    { width: tw, align: "left" },
   );
-  doc.text(`Suggested fabric cut (includes margin): about ${cut.widthIn} in × ${cut.heightIn} in`);
-  doc.text(`DMC colors in chart: ${meta.colorCount}`);
-  doc.text(`Estimated total stitches: ${meta.totalStitches.toLocaleString()}`);
-  doc.text(`Stitchability score: ${meta.stitchabilityScore}/100 (${meta.difficultyLabel})`);
-  doc.moveDown();
+  doc.text(`Suggested fabric cut (includes margin): about ${cut.widthIn} in × ${cut.heightIn} in`, { width: tw, align: "left" });
+  doc.text(`DMC colors in chart: ${meta.colorCount}`, { width: tw, align: "left" });
+  doc.text(`Estimated total stitches: ${meta.totalStitches.toLocaleString()}`, { width: tw, align: "left" });
+  doc.text(`Stitchability score: ${meta.stitchabilityScore}/100 (${meta.difficultyLabel})`, { width: tw, align: "left" });
+  doc.moveDown(0.5);
   doc.fontSize(9).fillColor("#6b5f52");
   doc.text(
     "This chart is an artistic interpretation. Thread colors are matched to DMC shades; results vary with fabric, dye lots, lighting, and technique.",
-    { width: doc.page.width - 100, align: "left" },
+    { width: tw, align: "left" },
   );
-  doc.moveDown(0.5);
+  doc.moveDown(0.45);
   doc.text("© StitchMint. Personal use only unless a commercial license is purchased separately.", {
-    width: doc.page.width - 100,
+    width: tw,
+    align: "left",
   });
 }
 
-function drawInstructions(doc: PdfDoc) {
-  doc.addPage();
-  doc.fontSize(20).fillColor("#2c2416").text("How to use your chart", { align: "left" });
-  doc.moveDown();
+function drawInstructions(doc: PdfDoc, bg: CoverBackgroundImage | null) {
+  addDecoratedLetterPage(doc, bg);
+  const tw = contentTextWidth(doc);
+  doc.fontSize(18).fillColor("#2c2416").text("How to use your chart", PDF_MARGIN_PT, doc.y, { width: tw, align: "left" });
+  doc.moveDown(0.55);
   doc.fontSize(11).fillColor("#3a3228");
   const blocks = [
     "Fabric count tells you how many stitches fit in one inch. Higher counts mean smaller stitches and a smaller finished piece for the same chart.",
@@ -177,70 +211,89 @@ function drawInstructions(doc: PdfDoc) {
     "Before you buy supplies, double-check colors against the legend in good lighting.",
   ];
   for (const b of blocks) {
-    doc.text(b, { width: doc.page.width - 80, align: "left" });
-    doc.moveDown(0.6);
+    doc.text(b, { width: tw, align: "left" });
+    doc.moveDown(0.55);
   }
 }
 
-function drawLegend(doc: PdfDoc, palette: PatternColorRow[]) {
-  doc.addPage();
-  doc.fontSize(20).fillColor("#2c2416").text("Thread legend", { align: "left" });
-  doc.moveDown(0.8);
-  const left = 50;
+function drawLegend(doc: PdfDoc, palette: PatternColorRow[], bg: CoverBackgroundImage | null) {
+  addDecoratedLetterPage(doc, bg);
+  const tw = contentTextWidth(doc);
+  const left = PDF_MARGIN_PT;
+  doc.fontSize(18).fillColor("#2c2416").text("Thread legend", left, doc.y, { width: tw, align: "left" });
+  doc.moveDown(0.65);
   let y = doc.y;
   const rowH = 22;
   doc.fontSize(10);
-  doc.text("Symbol", left, y, { width: 50 });
-  doc.text("DMC", left + 55, y, { width: 50 });
-  doc.text("Name", left + 110, y, { width: 220 });
-  doc.text("Stitches", left + 340, y, { width: 60 });
-  doc.text("Skeins*", left + 410, y, { width: 60 });
+  const colSym = left;
+  const colDmc = left + 44;
+  const colName = left + 96;
+  const colSt = left + tw - 108;
+  const colSk = left + tw - 52;
+  doc.text("Symbol", colSym, y, { width: 40, align: "left" });
+  doc.text("DMC", colDmc, y, { width: 44, align: "left" });
+  doc.text("Name", colName, y, { width: Math.max(100, colSt - colName - 8), align: "left" });
+  doc.text("Stitches", colSt, y, { width: 56, align: "left" });
+  doc.text("Skeins*", colSk, y, { width: 48, align: "left" });
   y += rowH;
-  doc.moveTo(left, y).lineTo(doc.page.width - 50, y).stroke("#d8cfc0");
-  y += 6;
+  doc.moveTo(left, y).lineTo(left + tw, y).stroke("#d8cfc0");
+  y += 8;
+  const pageBottom = doc.page.height - PDF_MARGIN_PT;
   for (const row of palette) {
-    if (y > doc.page.height - 80) {
-      doc.addPage();
-      y = 60;
+    if (y > pageBottom - rowH) {
+      addDecoratedLetterPage(doc, bg);
+      y = doc.y;
     }
     doc.save();
-    doc.fillColor(`#${row.hex}`).rect(left, y - 2, 16, 16).fill();
-    doc.strokeColor("#c9bfb0").rect(left, y - 2, 16, 16).stroke();
+    doc.fillColor(`#${row.hex}`).rect(colSym, y - 2, 16, 16).fill();
+    doc.strokeColor("#c9bfb0").rect(colSym, y - 2, 16, 16).stroke();
     doc.restore();
-    doc.fillColor("#2c2416").fontSize(10).text(row.symbol, left + 22, y, { width: 40 });
-    doc.text(row.dmcNumber, left + 55, y, { width: 50 });
-    doc.text(row.dmcName, left + 110, y, { width: 220 });
-    doc.text(String(row.stitchCount), left + 340, y, { width: 60 });
-    doc.text(String(row.estimatedSkeins), left + 410, y, { width: 60 });
+    doc.fillColor("#2c2416").fontSize(10).text(row.symbol, colSym + 22, y, { width: 36, align: "left" });
+    doc.text(row.dmcNumber, colDmc, y, { width: 44, align: "left" });
+    doc.text(row.dmcName, colName, y, { width: Math.max(100, colSt - colName - 8), align: "left" });
+    doc.text(String(row.stitchCount), colSt, y, { width: 56, align: "left" });
+    doc.text(String(row.estimatedSkeins), colSk, y, { width: 48, align: "left" });
     y += rowH;
   }
-  doc.moveDown(1);
-  doc.fontSize(8).fillColor("#6b5f52").text("*Skein estimates are approximate.", left, y);
+  doc.y = y;
+  doc.x = left;
+  doc.moveDown(0.6);
+  doc.fontSize(8).fillColor("#6b5f52").text("*Skein estimates are approximate.", { width: tw, align: "left" });
 }
 
-function drawChartPages(doc: PdfDoc, grid: number[][], palette: PatternColorRow[], variant: ChartVariant) {
+function drawChartPages(doc: PdfDoc, grid: number[][], palette: PatternColorRow[], variant: ChartVariant, bg: CoverBackgroundImage | null) {
   const H = grid.length;
   const W = grid[0]?.length ?? 0;
   const cfg = variant === "large" ? CHART_PAGE_LARGE : CHART_PAGE_REGULAR;
   const PW = cfg.cols;
   const PH = cfg.rows;
   const O = cfg.overlap;
-  const margin = 40;
+  const marginL = PDF_MARGIN_PT;
+  const marginR = PDF_MARGIN_PT;
+  const marginB = PDF_MARGIN_PT;
   const labelCol = variant === "large" ? 34 : 28;
   const labelRow = variant === "large" ? 26 : 22;
-  const usableW = doc.page.width - margin * 2 - labelCol;
-  const usableH = doc.page.height - margin * 2 - labelRow;
+  const chartTitleH = 16;
+  const topBand = PDF_HEADER_RESERVED_PT + chartTitleH;
+  const originX = marginL + labelCol;
+  const originY = topBand + labelRow;
+  const usableW = doc.page.width - marginL - marginR - labelCol;
+  const usableH = doc.page.height - originY - marginB;
   const cell = Math.min(variant === "large" ? 12 : 8, Math.floor(Math.min(usableW / PW, usableH / PH)));
 
   let pageIndex = 0;
   for (let startY = 0; startY < H; startY += PH - O) {
     for (let startX = 0; startX < W; startX += PW - O) {
       pageIndex++;
-      doc.addPage();
-      doc.fontSize(10).fillColor("#5c5346").text(`Chart ${pageIndex} — rows ${startY + 1}–${Math.min(H, startY + PH)}`, margin, margin - 10);
+      addDecoratedLetterPage(doc, bg);
 
-      const originX = margin + labelCol;
-      const originY = margin + labelRow;
+      const tw = contentTextWidth(doc);
+      doc.fontSize(10).fillColor("#5c5346").text(
+        `Chart ${pageIndex} — rows ${startY + 1}–${Math.min(H, startY + PH)}`,
+        marginL,
+        PDF_HEADER_RESERVED_PT + 4,
+        { width: tw, align: "left" },
+      );
 
       // Column guides (every 10)
       doc.save();
@@ -257,7 +310,7 @@ function drawChartPages(doc: PdfDoc, grid: number[][], palette: PatternColorRow[
       for (let r = 0; r < PH && startY + r < H; r++) {
         const rowNum = startY + r + 1;
         if (rowNum % 10 === 1 || rowNum % 10 === 0) {
-          doc.fontSize(variant === "large" ? 7 : 6).fillColor("#7a6f62").text(String(rowNum), margin, originY + r * cell + cell * 0.35, {
+          doc.fontSize(variant === "large" ? 7 : 6).fillColor("#7a6f62").text(String(rowNum), marginL, originY + r * cell + cell * 0.35, {
             width: labelCol - 6,
             align: "right",
           });
@@ -283,8 +336,8 @@ function drawChartPages(doc: PdfDoc, grid: number[][], palette: PatternColorRow[
         }
       }
 
-      doc.fontSize(8).fillColor("#9a8f82").text("Overlap pages using shaded border columns/rows when present.", margin, doc.page.height - 36, {
-        width: doc.page.width - margin * 2,
+      doc.fontSize(8).fillColor("#9a8f82").text("Overlap pages using shaded border columns/rows when present.", marginL, doc.page.height - marginB - 14, {
+        width: tw,
         align: "left",
       });
     }
@@ -301,58 +354,79 @@ export async function buildPatternPdf(params: {
   /** When omitted, loads once from public / env (see loadPatternCoverBackground). */
   coverBackground?: CoverBackgroundImage | null;
 }): Promise<Buffer> {
-  const doc = new PDFDocument({ size: "LETTER", margin: 36, bufferPages: true });
+  const doc = new PDFDocument({ size: "LETTER", margin: 0, bufferPages: true });
   const done = collectPdfBuffer(doc);
 
   const coverBg =
     params.coverBackground !== undefined ? params.coverBackground : await loadPatternCoverBackground();
 
+  decorateLetterPage(doc, coverBg);
   drawCover(doc, params.meta, { original: params.originalImage, preview: params.previewImage }, coverBg);
-  drawInstructions(doc);
-  drawLegend(doc, params.palette);
-  drawChartPages(doc, params.grid, params.palette, params.variant);
+  drawInstructions(doc, coverBg);
+  drawLegend(doc, params.palette, coverBg);
+  drawChartPages(doc, params.grid, params.palette, params.variant, coverBg);
 
   doc.end();
   return done;
 }
 
-export async function buildThreadShoppingListPdf(palette: PatternColorRow[]): Promise<Buffer> {
-  const doc = new PDFDocument({ size: "LETTER", margin: 48 });
+export async function buildThreadShoppingListPdf(
+  palette: PatternColorRow[],
+  coverBackground?: CoverBackgroundImage | null,
+): Promise<Buffer> {
+  const bg = coverBackground !== undefined ? coverBackground : await loadPatternCoverBackground();
+  const doc = new PDFDocument({ size: "LETTER", margin: 0, bufferPages: true });
   const done = collectPdfBuffer(doc);
-  doc.fontSize(22).fillColor("#2c2416").text("Thread shopping list", { align: "left" });
-  doc.moveDown();
-  doc.fontSize(10).fillColor("#5c5346").text("DMC Six-Strand Embroidery Floss — check colors in store when possible.");
-  doc.moveDown(1);
+  decorateLetterPage(doc, bg);
+  const tw = contentTextWidth(doc);
+  const left = PDF_MARGIN_PT;
+
+  doc.fontSize(20).fillColor("#2c2416").text("Thread shopping list", left, doc.y, { width: tw, align: "left" });
+  doc.moveDown(0.45);
+  doc.fontSize(10).fillColor("#5c5346").text("DMC Six-Strand Embroidery Floss — check colors in store when possible.", {
+    width: tw,
+    align: "left",
+  });
+  doc.moveDown(0.85);
   let y = doc.y;
-  const left = 50;
-  doc.fontSize(10).text("☐", left, y, { width: 20 });
-  doc.text("DMC", left + 30, y, { width: 60 });
-  doc.text("Color name", left + 100, y, { width: 320 });
-  doc.text("Skeins (est.)", left + 430, y, { width: 80 });
+  const colCh = left;
+  const colDmc = left + 28;
+  const colName = left + 92;
+  const colSk = left + tw - 56;
+  doc.fontSize(10).text("☐", colCh, y, { width: 20, align: "left" });
+  doc.text("DMC", colDmc, y, { width: 52, align: "left" });
+  doc.text("Color name", colName, y, { width: Math.max(160, colSk - colName - 10), align: "left" });
+  doc.text("Skeins (est.)", colSk, y, { width: 52, align: "left" });
   y += 22;
-  doc.moveTo(left, y).lineTo(doc.page.width - 50, y).stroke("#d8cfc0");
+  doc.moveTo(left, y).lineTo(left + tw, y).stroke("#d8cfc0");
   y += 10;
+  const pageBottom = doc.page.height - PDF_MARGIN_PT;
   for (const row of palette) {
-    if (y > doc.page.height - 60) {
-      doc.addPage();
-      y = 60;
+    if (y > pageBottom - 28) {
+      addDecoratedLetterPage(doc, bg);
+      y = doc.y;
     }
-    doc.rect(left, y - 2, 14, 14).fill(`#${row.hex}`).stroke("#c9bfb0");
-    doc.fillColor("#2c2416").text("☐", left + 22, y, { width: 20 });
-    doc.text(row.dmcNumber, left + 50, y, { width: 60 });
-    doc.text(row.dmcName, left + 120, y, { width: 300 });
-    doc.text(String(row.estimatedSkeins), left + 440, y, { width: 60 });
+    doc.rect(colCh, y - 2, 14, 14).fill(`#${row.hex}`).stroke("#c9bfb0");
+    doc.fillColor("#2c2416").text("☐", colCh + 18, y, { width: 20, align: "left" });
+    doc.text(row.dmcNumber, colDmc, y, { width: 52, align: "left" });
+    doc.text(row.dmcName, colName, y, { width: Math.max(140, colSk - colName - 12), align: "left" });
+    doc.text(String(row.estimatedSkeins), colSk, y, { width: 52, align: "left" });
     y += 22;
   }
   doc.end();
   return done;
 }
 
-export async function buildReadMeFirstPdf(): Promise<Buffer> {
-  const doc = new PDFDocument({ size: "LETTER", margin: 56 });
+export async function buildReadMeFirstPdf(coverBackground?: CoverBackgroundImage | null): Promise<Buffer> {
+  const bg = coverBackground !== undefined ? coverBackground : await loadPatternCoverBackground();
+  const doc = new PDFDocument({ size: "LETTER", margin: 0, bufferPages: true });
   const done = collectPdfBuffer(doc);
-  doc.fontSize(24).fillColor("#2c2416").text("Read me first", { align: "left" });
-  doc.moveDown();
+  decorateLetterPage(doc, bg);
+  const tw = contentTextWidth(doc);
+  const left = PDF_MARGIN_PT;
+
+  doc.fontSize(20).fillColor("#2c2416").text("Read me first", left, doc.y, { width: tw, align: "left" });
+  doc.moveDown(0.55);
   doc.fontSize(11).fillColor("#3a3228");
   const sections = [
     "Printing: print chart pages at 100% scale. Do not shrink to fit unless a page overflows—if it does, split across prints carefully.",
@@ -363,8 +437,8 @@ export async function buildReadMeFirstPdf(): Promise<Buffer> {
     `Questions: ${process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "hello@stitchmint.example"}`,
   ];
   for (const s of sections) {
-    doc.text(s, { width: doc.page.width - 112, align: "left" });
-    doc.moveDown(0.8);
+    doc.text(s, { width: tw, align: "left" });
+    doc.moveDown(0.75);
   }
   doc.end();
   return done;

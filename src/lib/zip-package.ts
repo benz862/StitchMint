@@ -1,6 +1,12 @@
 import JSZip from "jszip";
 import type { PatternColorRow, PatternResult } from "@/lib/pattern-engine";
-import { buildPatternPdf, buildReadMeFirstPdf, buildThreadShoppingListPdf, type PatternPdfMeta } from "@/lib/pattern-pdf";
+import {
+  buildPatternPdf,
+  buildReadMeFirstPdf,
+  buildThreadShoppingListPdf,
+  loadPatternCoverBackground,
+  type PatternPdfMeta,
+} from "@/lib/pattern-pdf";
 
 export async function buildPatternZipArchive(input: {
   title: string;
@@ -18,6 +24,7 @@ export async function buildPatternZipArchive(input: {
     difficultyLabel: input.pattern.difficultyLabel,
   };
 
+  const coverBg = await loadPatternCoverBackground();
   const [regular, large, shopping, readme] = await Promise.all([
     buildPatternPdf({
       meta,
@@ -26,6 +33,7 @@ export async function buildPatternZipArchive(input: {
       variant: "regular",
       originalImage: input.originalImage,
       previewImage: input.pattern.previewPng,
+      coverBackground: coverBg,
     }),
     buildPatternPdf({
       meta,
@@ -34,9 +42,10 @@ export async function buildPatternZipArchive(input: {
       variant: "large",
       originalImage: input.originalImage,
       previewImage: input.pattern.previewPng,
+      coverBackground: coverBg,
     }),
-    buildThreadShoppingListPdf(input.pattern.palette),
-    buildReadMeFirstPdf(),
+    buildThreadShoppingListPdf(input.pattern.palette, coverBg),
+    buildReadMeFirstPdf(coverBg),
   ]);
 
   const zip = new JSZip();
