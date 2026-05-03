@@ -8,7 +8,8 @@ import { buildTierSamplesMegaZip } from "@/lib/tier-sample-pack";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const MAX_BYTES = 18 * 1024 * 1024;
+/** Vercel and many hosts limit request bodies (~4.5MB); stay under with client-side shrink + this cap. */
+const MAX_BYTES = 4 * 1024 * 1024;
 
 function safeBaseTitle(name: string): string {
   const base = name.replace(/\.[^/.]+$/, "");
@@ -45,7 +46,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Empty file" }, { status: 400 });
   }
   if (file.size > MAX_BYTES) {
-    return NextResponse.json({ error: `Image too large (max ${Math.round(MAX_BYTES / (1024 * 1024))} MB)` }, { status: 413 });
+    return NextResponse.json(
+      {
+        error: `Image too large after upload (max ${Math.round(MAX_BYTES / (1024 * 1024))} MB). Export a smaller JPEG or use a lower-resolution file.`,
+      },
+      { status: 413 },
+    );
   }
 
   const alsoEmail = form.get("alsoEmail") === "1" || form.get("alsoEmail") === "true";

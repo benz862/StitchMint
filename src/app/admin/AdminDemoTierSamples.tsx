@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { shrinkImageFileIfNeeded } from "@/lib/shrink-image-client";
 
 function parseFilenameFromContentDisposition(header: string | null): string | null {
   if (!header) return null;
@@ -37,13 +38,14 @@ export function AdminDemoTierSamples() {
       setMessage(null);
       const form = e.currentTarget;
       const input = form.elements.namedItem("file") as HTMLInputElement;
-      const file = input.files?.[0];
-      if (!file) {
+      const raw = input.files?.[0];
+      if (!raw) {
         setError("Choose an image first.");
         return;
       }
       setBusy(true);
       try {
+        const file = await shrinkImageFileIfNeeded(raw);
         const fd = new FormData();
         fd.append("file", file);
         if (alsoEmail && canEmail) fd.append("alsoEmail", "1");
@@ -51,7 +53,11 @@ export function AdminDemoTierSamples() {
         const emailStatus = res.headers.get("x-demo-email-status") ?? "";
         if (!res.ok) {
           const j = (await res.json().catch(() => ({}))) as { error?: string };
-          throw new Error(j.error ?? `Request failed (${res.status})`);
+          const fallback =
+            res.status === 413
+              ? "Upload too large for the server (common on Vercel). Try a smaller JPEG/PNG or run the sample scripts locally."
+              : `Request failed (${res.status})`;
+          throw new Error(j.error ?? fallback);
         }
         const blob = await res.blob();
         const cd = res.headers.get("content-disposition");
@@ -108,19 +114,24 @@ export function AdminDemoTierSamples() {
   const downloadWebappShowcase = useCallback(async () => {
     setError(null);
     setMessage(null);
-    const file = fileInputRef.current?.files?.[0];
-    if (!file) {
+    const raw = fileInputRef.current?.files?.[0];
+    if (!raw) {
       setError("Choose an image first.");
       return;
     }
     setBusy(true);
     try {
+      const file = await shrinkImageFileIfNeeded(raw);
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch("/api/admin/webapp-download-showcase", { method: "POST", body: fd });
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(j.error ?? `Request failed (${res.status})`);
+        const fallback =
+          res.status === 413
+            ? "Upload too large for the server (common on Vercel). Try a smaller image or run npm run sample:webapp-showcase locally."
+            : `Request failed (${res.status})`;
+        throw new Error(j.error ?? fallback);
       }
       const blob = await res.blob();
       const cd = res.headers.get("content-disposition");
@@ -149,7 +160,7 @@ export function AdminDemoTierSamples() {
         Upload one image. <strong className="text-ink">Tier sample pack</strong> gives one ZIP with three inner ZIPs (Basic / Premium / Pro).
         <strong className="text-ink"> Web app showcase</strong> adds the same three complete customer downloads plus each bundle unpacked
         (<code className="rounded bg-cream px-1 text-xs text-ink">README.txt</code> explains the layout). Large jobs can take a couple of minutes.
-        Very large uploads may fail on small serverless limits — use a modest file or run{" "}
+        Large images are compressed in the browser before upload (Vercel limits request size). You can still run{" "}
         <code className="rounded bg-cream px-1 text-xs text-ink">npm run sample-zips</code> /{" "}
         <code className="rounded bg-cream px-1 text-xs text-ink">npm run sample:webapp-showcase</code> locally.
       </p>

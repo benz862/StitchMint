@@ -6,7 +6,7 @@ import { buildWebappDownloadShowcaseZip } from "@/lib/webapp-download-showcase";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const MAX_BYTES = 18 * 1024 * 1024;
+const MAX_BYTES = 4 * 1024 * 1024;
 
 function safeBaseTitle(name: string): string {
   const base = name.replace(/\.[^/.]+$/, "");
@@ -38,7 +38,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Empty file" }, { status: 400 });
   }
   if (file.size > MAX_BYTES) {
-    return NextResponse.json({ error: `Image too large (max ${Math.round(MAX_BYTES / (1024 * 1024))} MB)` }, { status: 413 });
+    return NextResponse.json(
+      {
+        error: `Image too large (max ${Math.round(MAX_BYTES / (1024 * 1024))} MB). Try a smaller file — the admin page auto-shrinks large photos before upload.`,
+      },
+      { status: 413 },
+    );
   }
 
   const buf = Buffer.from(await file.arrayBuffer());
