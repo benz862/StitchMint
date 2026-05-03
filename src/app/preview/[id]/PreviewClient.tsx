@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -82,6 +81,14 @@ export function PreviewClient() {
     return { widthIn, heightIn, cmW: inchesToCm(widthIn), cmH: inchesToCm(heightIn) };
   }, [pattern]);
 
+  /** Matches `renderPreviewPng` scale in pattern-engine (10px per stitch). */
+  const previewPixelSize = useMemo(() => {
+    const w = pattern?.stitch_width ?? 0;
+    const h = pattern?.stitch_height ?? 0;
+    if (!w || !h) return null;
+    return { w: w * 10, h: h * 10 };
+  }, [pattern]);
+
   const checkout = async () => {
     setBusy(true);
     setError(null);
@@ -130,12 +137,26 @@ export function PreviewClient() {
       </div>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="overflow-hidden rounded-3xl border border-line bg-card shadow-sm">
+        <div className="rounded-3xl border border-line bg-card shadow-sm">
           {previewUrl ? (
-            <Image src={previewUrl} alt="Stitch preview" width={900} height={900} className="h-auto w-full object-contain" unoptimized />
+            // eslint-disable-next-line @next/next/no-img-element -- signed external URL; intrinsic size must match PNG for correct aspect
+            <img
+              src={previewUrl}
+              alt="Stitch simulation preview"
+              width={previewPixelSize?.w ?? 400}
+              height={previewPixelSize?.h ?? 400}
+              className="mx-auto block h-auto max-h-[min(88vh,2200px)] w-full max-w-full object-contain"
+              decoding="async"
+            />
           ) : (
             <div className="flex h-80 items-center justify-center text-sm text-muted">Preview not ready yet.</div>
           )}
+          {previewUrl ? (
+            <p className="border-t border-line/80 px-4 py-3 text-center text-xs text-muted">
+              This image is a large stitch simulation (each square is one stitch). Any text you added is represented as
+              colored stitches, not as sharp lettering.
+            </p>
+          ) : null}
         </div>
 
         <div className="space-y-4">

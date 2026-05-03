@@ -12,15 +12,14 @@ function linesFromText(text: string) {
     .filter((s) => s.length > 0);
 }
 
-/** Quadratic path in 0–100 viewBox space; matches canvas curve logic approximately. */
+/** Quadratic path in 0–100 viewBox — full-width chord, peak X follows anchor (matches canvas). */
 function curvePathPerc(anchorX: number, anchorY: number, curve: Exclude<TextCurve, "none">): string {
-  const ax = Math.min(94, Math.max(6, anchorX));
-  const ay = Math.min(94, Math.max(6, anchorY));
-  const half = Math.min(38, Math.max(4, ax - 3, 100 - ax - 3));
-  const arc = 5;
-  const p0x = ax - half;
-  const p2x = ax + half;
-  const p1x = ax;
+  const margin = 3;
+  const ay = Math.min(96, Math.max(4, anchorY));
+  const p0x = margin;
+  const p2x = 100 - margin;
+  const p1x = Math.min(97 - margin, Math.max(margin + 1, anchorX));
+  const arc = 7;
   const p1y = curve === "arcUp" ? ay - arc : ay + arc;
   return `M ${p0x} ${ay} Q ${p1x} ${p1y} ${p2x} ${ay}`;
 }
@@ -75,6 +74,9 @@ export function CropTextLiveOverlay({
             <path id={pathId} d={d} fill="none" />
           </defs>
           <text
+            x={0}
+            y={0}
+            textAnchor="middle"
             dominantBaseline="middle"
             fontFamily={stack}
             fontWeight={typography.fontWeight}
@@ -84,9 +86,9 @@ export function CropTextLiveOverlay({
             stroke="rgba(0,0,0,0.35)"
             strokeWidth={0.12 + 0.06 * Math.min(sizeS, 1.8)}
             paintOrder="stroke fill"
-            fontSize={3.1 * sizeS}
+            fontSize={Math.max(2.6, 4.2 * sizeS)}
           >
-            <textPath href={`#${pathId}`} startOffset="50%" textAnchor="middle">
+            <textPath href={`#${pathId}`} startOffset="50%">
               {lines[0]}
             </textPath>
           </text>

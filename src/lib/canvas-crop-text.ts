@@ -251,6 +251,10 @@ function drawCurvedLine(
   }
 }
 
+/**
+ * Full-width chord so the arc never degenerates when the anchor is near a corner.
+ * Horizontal “peak” of the bend follows anchorX; vertical position follows anchorY.
+ */
 function curveControlPoints(
   cw: number,
   ch: number,
@@ -258,16 +262,16 @@ function curveControlPoints(
   anchorY: number,
   curve: TextCurve,
 ): { p0: Vec; p1: Vec; p2: Vec } {
-  const ax = (anchorX / 100) * cw;
+  const margin = Math.max(10, Math.min(24, cw * 0.02));
   const ay = (anchorY / 100) * ch;
-  const halfW = Math.min(cw * 0.42, ax - 4, cw - ax - 4);
-  const arc = Math.min(cw, ch) * 0.055;
-  const p0: Vec = { x: ax - halfW, y: ay };
-  const p2: Vec = { x: ax + halfW, y: ay };
+  const p0: Vec = { x: margin, y: ay };
+  const p2: Vec = { x: cw - margin, y: ay };
+  const arc = Math.min(cw, ch) * 0.1;
+  const p1x = Math.max(margin + 6, Math.min(cw - margin - 6, (anchorX / 100) * cw));
   const p1: Vec =
     curve === "arcUp"
-      ? { x: ax, y: ay - arc }
-      : { x: ax, y: ay + arc };
+      ? { x: p1x, y: ay - arc }
+      : { x: p1x, y: ay + arc };
   return { p0, p1, p2 };
 }
 
