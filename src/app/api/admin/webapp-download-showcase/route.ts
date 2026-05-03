@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { uploadAdminDemoZipAndSignUrl } from "@/lib/admin-demo-storage";
+import { ADMIN_DEMO_INLINE_ZIP_MAX_BYTES, uploadAdminDemoZipAndSignUrl } from "@/lib/admin-demo-storage";
 import { isAdminEmail } from "@/lib/auth-admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { buildWebappDownloadShowcaseZip } from "@/lib/webapp-download-showcase";
@@ -64,7 +64,17 @@ export async function POST(request: Request) {
     const { url } = await uploadAdminDemoZipAndSignUrl(user.id, mega);
     return NextResponse.json({ url, filename }, { status: 200, headers: { "Cache-Control": "no-store" } });
   } catch (storageErr) {
-    console.error("[webapp-download-showcase] Supabase upload failed, falling back to inline ZIP", storageErr);
+    const detail = storageErr instanceof Error ? storageErr.message : String(storageErr);
+    console.error("[webapp-download-showcase] Supabase upload failed", detail);
+    if (mega.length > ADMIN_DEMO_INLINE_ZIP_MAX_BYTES) {
+      return NextResponse.json(
+        {
+          error: "Could not store the showcase ZIP in Supabase (output too large to stream from this host).",
+          detail: detail + " — Check SUPABASE_SERVICE_ROLE_KEY and the `packages` bucket.",
+        },
+        { status: 503 },
+      );
+    }
     return new NextResponse(new Uint8Array(mega), {
       status: 200,
       headers: {

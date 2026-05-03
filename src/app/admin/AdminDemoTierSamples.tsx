@@ -97,12 +97,15 @@ export function AdminDemoTierSamples() {
         if (alsoEmail && canEmail) fd.append("alsoEmail", "1");
         const res = await fetch("/api/admin/demo-tier-samples", { method: "POST", body: fd });
         if (!res.ok) {
-          const j = (await res.json().catch(() => ({}))) as { error?: string };
+          const j = (await res.json().catch(() => ({}))) as { error?: string; detail?: string };
           const fallback =
             res.status === 413
               ? "Upload too large for the server (common on Vercel). Try a smaller JPEG/PNG or run the sample scripts locally."
-              : `Request failed (${res.status})`;
-          throw new Error(j.error ?? fallback);
+              : res.status === 503
+                ? "Server could not prepare the download (often Supabase Storage or env keys)."
+                : `Request failed (${res.status})`;
+          const parts = [j.error ?? fallback, j.detail].filter(Boolean);
+          throw new Error(parts.join(" — "));
         }
         const { emailStatus } = await downloadZipFromAdminResponse(res, "StitchMint-tier-samples.zip");
 
@@ -160,12 +163,15 @@ export function AdminDemoTierSamples() {
       fd.append("file", file);
       const res = await fetch("/api/admin/webapp-download-showcase", { method: "POST", body: fd });
       if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        const j = (await res.json().catch(() => ({}))) as { error?: string; detail?: string };
         const fallback =
           res.status === 413
             ? "Upload too large for the server (common on Vercel). Try a smaller image or run npm run sample:webapp-showcase locally."
-            : `Request failed (${res.status})`;
-        throw new Error(j.error ?? fallback);
+            : res.status === 503
+              ? "Server could not prepare the download (often Supabase Storage or env keys)."
+              : `Request failed (${res.status})`;
+        const parts = [j.error ?? fallback, j.detail].filter(Boolean);
+        throw new Error(parts.join(" — "));
       }
       await downloadZipFromAdminResponse(res, "StitchMint-webapp-download-showcase.zip");
       setMessage("Web app showcase download started (bundles + unpacked for Basic, Premium, Pro).");
@@ -240,7 +246,7 @@ export function AdminDemoTierSamples() {
         <h3 className="text-sm font-medium text-ink">Resend email test</h3>
         <p className="mt-1 max-w-xl text-xs text-muted">
           Sends one plain message to your admin login email using <code className="rounded bg-cream px-1">RESEND_FROM</code> (or Resend
-          onboarding if unset). Use this to confirm Vercel env vars before emailing large ZIPs.
+          onboarding if unset). Use this to confirm Vercel env vars before using “Also email me a copy” (that flow emails a download link, not an attachment).
         </p>
         <button
           type="button"

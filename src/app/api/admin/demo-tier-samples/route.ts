@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
+import { ADMIN_DEMO_INLINE_ZIP_MAX_BYTES, uploadAdminDemoZipAndSignUrl } from "@/lib/admin-demo-storage";
 import { isAdminEmail } from "@/lib/auth-admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { uploadAdminDemoZipAndSignUrl } from "@/lib/admin-demo-storage";
 import { getResendApiKey, getResendFrom, resendApiKeyMissingHint } from "@/lib/resend-config";
 import { buildTierSamplesMegaZip } from "@/lib/tier-sample-pack";
 
@@ -67,6 +67,36 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 
+  const filename = `StitchMint-tier-samples-${baseTitle.replace(/\s+/g, "-")}.zip`.replace(/[^a-zA-Z0-9._-]/g, "");
+
+  let signedUrl: string;
+  try {
+    const out = await uploadAdminDemoZipAndSignUrl(user.id, mega);
+    signedUrl = out.url;
+  } catch (storageErr) {
+    const detail = storageErr instanceof Error ? storageErr.message : String(storageErr);
+    console.error("[demo-tier-samples] Supabase upload failed", detail);
+    if (mega.length > ADMIN_DEMO_INLINE_ZIP_MAX_BYTES) {
+      return NextResponse.json(
+        {
+          error: "Could not store the demo ZIP in Supabase (file too large to stream from this host).",
+          detail:
+            detail +
+            " — Check SUPABASE_SERVICE_ROLE_KEY on Vercel and that the `packages` bucket exists. Path must allow service uploads.",
+        },
+        { status: 503 },
+      );
+    }
+    return new NextResponse(new Uint8Array(mega), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
   let emailStatus = "skipped";
   if (alsoEmail) {
     const key = getResendApiKey();
@@ -80,9 +110,8 @@ export async function POST(request: Request) {
         const { error } = await resend.emails.send({
           from,
           to: user.email,
-          subject: "StitchMint tier sample pack",
-          html: "<p>Attached: <strong>StitchMint-tier-samples.zip</strong> with Basic, Premium, and Pro exports from your image (same PDF bundle as customers).</p>",
-          attachments: [{ filename: "StitchMint-tier-samples.zip", content: mega }],
+          subject: "StitchMint tier sample pack — download link",
+          html: `<p>Your tier sample ZIP is ready (link expires in about 15 minutes).</p><p><a href="${signedUrl}">Download StitchMint tier samples</a></p><p>If the button does not work, copy this URL into your browser:<br/><code style="word-break:break-all">${signedUrl}</code></p>`,
         });
         if (error) {
           emailStatus = `failed:${error.message}`;
@@ -95,24 +124,8 @@ export async function POST(request: Request) {
     }
   }
 
-  const filename = `StitchMint-tier-samples-${baseTitle.replace(/\s+/g, "-")}.zip`.replace(/[^a-zA-Z0-9._-]/g, "");
-
-  try {
-    const { url } = await uploadAdminDemoZipAndSignUrl(user.id, mega);
-    return NextResponse.json(
-      { url, filename, emailStatus },
-      { status: 200, headers: { "Cache-Control": "no-store" } },
-    );
-  } catch (storageErr) {
-    console.error("[demo-tier-samples] Supabase upload failed, falling back to inline ZIP body", storageErr);
-    return new NextResponse(new Uint8Array(mega), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="${filename}"`,
-        "X-Demo-Email-Status": emailStatus,
-        "Cache-Control": "no-store",
-      },
-    });
-  }
+  return NextResponse.json(
+    { url: signedUrl, filename, emailStatus },
+    { status: 200, headers: { "Cache-Control": "no-store" } },
+  );
 }
