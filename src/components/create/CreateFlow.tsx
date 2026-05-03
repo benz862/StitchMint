@@ -9,6 +9,8 @@ import { FABRIC_COUNTS } from "@/lib/constants";
 import { STORAGE_BUCKETS } from "@/lib/buckets";
 import type { TextCurve, TextTypography } from "@/lib/canvas-crop-text";
 import {
+  ARC_SCALE_MAX,
+  ARC_SCALE_MIN,
   composeCroppedImageWithOverlay,
   defaultTextTypography,
   FONT_SIZE_SCALE_MAX,
@@ -67,6 +69,7 @@ export function CreateFlow() {
   const [textAnchorX, setTextAnchorX] = useState(50);
   const [textAnchorY, setTextAnchorY] = useState(82);
   const [textCurve, setTextCurve] = useState<TextCurve>("none");
+  const [textArcScale, setTextArcScale] = useState(1);
   const [textTypography, setTextTypography] = useState<TextTypography>(() => defaultTextTypography());
   const [textColor, setTextColor] = useState("#ffffff");
 
@@ -141,6 +144,7 @@ export function CreateFlow() {
     setTextAnchorX(50);
     setTextAnchorY(82);
     setTextCurve("none");
+    setTextArcScale(1);
     setTextTypography(defaultTextTypography());
     setTextColor("#ffffff");
     setStep(2);
@@ -220,6 +224,7 @@ export function CreateFlow() {
           anchorX: textAnchorX,
           anchorY: textAnchorY,
           curve: textCurve,
+          arcScale: textArcScale,
           typography: textTypography,
           color: textColor,
         });
@@ -381,6 +386,7 @@ export function CreateFlow() {
                   anchorX={textAnchorX}
                   anchorY={textAnchorY}
                   curve={textCurve}
+                  arcScale={textArcScale}
                   typography={textTypography}
                   color={textColor}
                   dragHandlers={textDragHandlers}
@@ -406,8 +412,10 @@ export function CreateFlow() {
             <div className="rounded-2xl border border-line bg-cream/50 p-4 sm:p-5">
               <h2 className="text-sm font-medium text-ink">Text on your photo (optional)</h2>
               <p className="mt-1 text-xs text-muted">
-                Type below — a live preview appears on the crop. Drag the text (or the round handle on curved text) to
-                position it. Curved styles use one line only; use Enter for multiple straight lines.
+                Type below — a live preview appears on the crop. <strong className="font-medium text-ink">Straight:</strong>{" "}
+                drag the text to move it. <strong className="font-medium text-ink">Curved (one line):</strong> drag the
+                grip on the photo to move the line; use <em>Curve up / down</em> for bend direction and{" "}
+                <em>Bend amount</em> for how strong the arc is.
               </p>
               <div className="mt-4 grid gap-4 text-left sm:grid-cols-2">
                 <div className="sm:col-span-2">
@@ -459,8 +467,8 @@ export function CreateFlow() {
                     </button>
                   </div>
                 </div>
-                <div>
-                  <p className="text-sm text-muted">Curve (single line)</p>
+                <div className="sm:col-span-2">
+                  <p className="text-sm text-muted">Curve (single line only)</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {(
                       [
@@ -481,6 +489,34 @@ export function CreateFlow() {
                       </button>
                     ))}
                   </div>
+                  {textCurve !== "none" ? (
+                    <div className="mt-4">
+                      <label htmlFor="stitchmint-arc-scale" className="text-sm text-muted">
+                        Bend amount — {Math.round(textArcScale * 100)}% (how deep the arc is)
+                      </label>
+                      <input
+                        id="stitchmint-arc-scale"
+                        type="range"
+                        min={ARC_SCALE_MIN}
+                        max={ARC_SCALE_MAX}
+                        step={0.05}
+                        value={textArcScale}
+                        onChange={(e) => setTextArcScale(Number(e.target.value))}
+                        className="mt-2 w-full accent-ink"
+                      />
+                      <p className="mt-1 flex flex-wrap justify-between gap-2 text-xs text-muted">
+                        <span>Shallow</span>
+                        <button
+                          type="button"
+                          className="rounded-full border border-line bg-card px-2 py-0.5 text-ink hover:bg-cream-deep/80"
+                          onClick={() => setTextArcScale(1)}
+                        >
+                          Reset bend
+                        </button>
+                        <span>Deep</span>
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
                 <div>
                   <label htmlFor="stitchmint-font-family" className="text-sm text-muted">

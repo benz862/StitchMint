@@ -5,6 +5,15 @@ export type TextCurve = "none" | "arcUp" | "arcDown";
 export const FONT_SIZE_SCALE_MIN = 0.35;
 export const FONT_SIZE_SCALE_MAX = 2.5;
 
+/** How deep the curved text bend is (1 = default). */
+export const ARC_SCALE_MIN = 0.15;
+export const ARC_SCALE_MAX = 2.5;
+
+export function clampArcScale(v: number | undefined): number {
+  const s = typeof v === "number" && Number.isFinite(v) ? v : 1;
+  return Math.min(ARC_SCALE_MAX, Math.max(ARC_SCALE_MIN, s));
+}
+
 export type TextTypography = {
   fontId: string;
   fontWeight: number;
@@ -20,6 +29,8 @@ export type TextOverlaySpec = {
   anchorX: number;
   anchorY: number;
   curve: TextCurve;
+  /** Bend strength when curve is arc up/down (default 1). Ignored when straight. */
+  arcScale?: number;
   typography: TextTypography;
   color: string;
 };
@@ -260,13 +271,14 @@ function curveControlPoints(
   ch: number,
   anchorX: number,
   anchorY: number,
-  curve: TextCurve,
+  curve: Exclude<TextCurve, "none">,
+  arcScale: number,
 ): { p0: Vec; p1: Vec; p2: Vec } {
   const margin = Math.max(10, Math.min(24, cw * 0.02));
   const ay = (anchorY / 100) * ch;
   const p0: Vec = { x: margin, y: ay };
   const p2: Vec = { x: cw - margin, y: ay };
-  const arc = Math.min(cw, ch) * 0.1;
+  const arc = Math.min(cw, ch) * 0.1 * arcScale;
   const p1x = Math.max(margin + 6, Math.min(cw - margin - 6, (anchorX / 100) * cw));
   const p1: Vec =
     curve === "arcUp"
@@ -286,7 +298,9 @@ function drawOverlay(ctx: CanvasRenderingContext2D, cw: number, ch: number, spec
   const single = lines[0]!;
 
   if (useCurve) {
-    const { p0, p1, p2 } = curveControlPoints(cw, ch, spec.anchorX, spec.anchorY, spec.curve);
+    const arcScale = clampArcScale(spec.arcScale);
+    const bend: Exclude<TextCurve, "none"> = spec.curve === "arcUp" ? "arcUp" : "arcDown";
+    const { p0, p1, p2 } = curveControlPoints(cw, ch, spec.anchorX, spec.anchorY, bend, arcScale);
     const arcLen = approxQuadLength(p0, p1, p2);
     let fs = Math.min(64, Math.max(16, Math.round(ch * 0.065)));
     const min = 14;
