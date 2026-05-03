@@ -140,6 +140,26 @@ function drawUnderline(ctx: CanvasRenderingContext2D, cx: number, y: number, tex
   ctx.stroke();
 }
 
+/** Perceived luminance test so we can pick a black or white outline that contrasts with the user's text color. */
+function isLightTextColor(hex: string): boolean {
+  const m = hex.replace("#", "").trim();
+  let r = 255;
+  let g = 255;
+  let b = 255;
+  if (m.length === 6) {
+    r = parseInt(m.slice(0, 2), 16);
+    g = parseInt(m.slice(2, 4), 16);
+    b = parseInt(m.slice(4, 6), 16);
+  } else if (m.length === 3) {
+    r = parseInt(m[0]! + m[0]!, 16);
+    g = parseInt(m[1]! + m[1]!, 16);
+    b = parseInt(m[2]! + m[2]!, 16);
+  }
+  if (![r, g, b].every((v) => Number.isFinite(v))) return true;
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.55;
+}
+
 function drawStraightAtAnchor(
   ctx: CanvasRenderingContext2D,
   lines: string[],
@@ -161,13 +181,30 @@ function drawStraightAtAnchor(
   const startY = ay - totalH / 2 + fontSize * 0.72;
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
-  ctx.fillStyle = color;
+
+  /**
+   * After DMC quantization on a 200-stitch grid a flat fill blends into similar fur/background colors and the
+   * title can disappear. A thin contrasting outline (chosen automatically from the text color's luminance) keeps
+   * the lettering legible without looking like a drop shadow.
+   */
+  const outlineColor = isLightTextColor(color) ? "#000000" : "#ffffff";
+  const outlineWidth = Math.max(1, fontSize * 0.06);
+
   lines.forEach((line, i) => {
     const y = startY + i * lineH;
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.miterLimit = 2;
+    ctx.lineWidth = outlineWidth;
+    ctx.strokeStyle = outlineColor;
+    ctx.strokeText(line, ax, y);
+    ctx.restore();
+    ctx.fillStyle = color;
     ctx.fillText(line, ax, y);
     if (typography.underline) {
       ctx.save();
       ctx.lineWidth = Math.max(1.5, fontSize * 0.07);
+      ctx.fillStyle = color;
       drawUnderline(ctx, ax, y, line, fontSize);
       ctx.restore();
     }
