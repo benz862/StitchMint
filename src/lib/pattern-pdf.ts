@@ -170,8 +170,15 @@ function drawCover(
     width: tw,
     align: "left",
   });
-  doc.moveDown(0.35);
-  doc.fontSize(16).text(meta.title, { width: tw, align: "left" });
+  doc.moveDown(0.2);
+  doc.fontSize(10).fillColor("#6b5f52").text(
+    chartVariant === "large"
+      ? "This PDF: large-print chart (same pattern as the regular PDF — bigger symbols, more chart pages)."
+      : "This PDF: regular chart (same pattern as the large-print PDF — smaller symbols, fewer chart pages).",
+    { width: tw, align: "left" },
+  );
+  doc.moveDown(0.45);
+  doc.fontSize(16).fillColor("#2c2416").text(meta.title, { width: tw, align: "left" });
   doc.moveDown(0.9);
 
   const thumbW = 138;
