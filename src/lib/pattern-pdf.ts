@@ -231,10 +231,11 @@ function drawCover(
   doc.text(`Grid: ${meta.stitchWidth} × ${meta.stitchHeight} stitches`, { width: tw, align: "left" });
   const slice = chartVariant === "large" ? CHART_PAGE_LARGE : CHART_PAGE_REGULAR;
   const printLabel = chartVariant === "large" ? "Large-print chart" : "Regular chart";
-  doc.fontSize(9).fillColor("#5c5346").text(
-    `${printLabel}: each printed sheet shows up to ${slice.cols} × ${slice.rows} stitches from this same grid (${slice.overlap}-stitch overlap between sheets). Fewer stitches per sheet means larger symbols and more chart pages — not a different pattern size.`,
-    { width: tw, align: "left" },
-  );
+  const sliceExplain =
+    chartVariant === "large"
+      ? `${printLabel}: each printed sheet shows up to ${slice.cols} × ${slice.rows} stitches from this same grid (${slice.overlap}-stitch overlap between sheets). Fewer stitches per page → larger printed symbols and more chart pages. The embroidery is not finer or “higher detail” — it is the same chart, zoomed for reading.`
+      : `${printLabel}: each printed sheet shows up to ${slice.cols} × ${slice.rows} stitches from this same grid (${slice.overlap}-stitch overlap between sheets). More stitches per page → smaller printed symbols and fewer chart pages. Same chart as the large-print PDF — not less detail in the stitch design.`;
+  doc.fontSize(9).fillColor("#5c5346").text(sliceExplain, { width: tw, align: "left" });
   doc.moveDown(0.35);
   doc.fontSize(11).fillColor("#2c2416");
   doc.text(`Fabric: ${meta.fabricCount}-count Aida`, { width: tw, align: "left" });
