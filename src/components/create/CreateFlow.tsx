@@ -31,7 +31,7 @@ const ASPECT_PRESETS = [
 ] as const;
 
 /** react-easy-crop: below 1 shows more of the image in the frame; above 1 crops tighter. */
-const CROP_MIN_ZOOM = 0.5;
+const CROP_MIN_ZOOM = 0.28;
 const CROP_MAX_ZOOM = 3;
 
 type Step = 1 | 2 | 3 | 4 | 5;
@@ -54,6 +54,8 @@ export function CreateFlow() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const resumeHydratedRef = useRef<string | null>(null);
+  /** Last `${imageUrl}|${aspect}` we applied wide-photo auto zoom for (avoid fighting user after they adjust). */
+  const autoCropZoomKeyRef = useRef<string | null>(null);
   const [step, setStep] = useState<Step>(1);
   const [file, setFile] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -184,6 +186,7 @@ export function CreateFlow() {
         setZoom(1);
         setCroppedAreaPixels(null);
         setMediaSize(null);
+        autoCropZoomKeyRef.current = null;
 
         const tier = getPricingTierIdFromPatternRow({
           pricing_tier: row.pricing_tier as string | null | undefined,
@@ -216,6 +219,25 @@ export function CreateFlow() {
     };
   }, [searchParams, router]);
 
+  /**
+   * Portrait (and similar) frames are narrower than a typical photo; default zoom centers and often clips the
+   * left/right (e.g. nose on the right). When the image is wider than the crop aspect, start zoomed out.
+   */
+  useEffect(() => {
+    if (step !== 2 || !imageUrl || !mediaSize?.naturalWidth || !mediaSize?.naturalHeight) return;
+    const nw = mediaSize.naturalWidth;
+    const nh = mediaSize.naturalHeight;
+    if (nh < 1) return;
+    const key = `${imageUrl}|${aspect}`;
+    if (autoCropZoomKeyRef.current === key) return;
+    const imgAR = nw / nh;
+    if (imgAR > aspect + 0.002) {
+      setZoom(CROP_MIN_ZOOM);
+      setCrop({ x: 0, y: 0 });
+    }
+    autoCropZoomKeyRef.current = key;
+  }, [step, imageUrl, mediaSize?.naturalWidth, mediaSize?.naturalHeight, aspect]);
+
   const stitchWidth = useMemo(() => {
     const tier = PRICING_TIERS.find((t) => t.id === pricingTierId);
     return tier?.engine.stitchWidth ?? 120;
@@ -235,6 +257,7 @@ export function CreateFlow() {
     setCrop({ x: 0, y: 0 });
     setZoom(1);
     setCroppedAreaPixels(null);
+    autoCropZoomKeyRef.current = null;
     setOverlayText("");
     setTextAnchorX(50);
     setTextAnchorY(82);
@@ -335,7 +358,7 @@ export function CreateFlow() {
           });
           setCroppedAreaPixels({ x: 0, y: 0, width: ow, height: oh });
           setCrop({ x: 0, y: 0 });
-          setZoom(1);
+          autoCropZoomKeyRef.current = null;
           const ct = webpBlob.type === "image/webp" ? "image/webp" : "image/jpeg";
           const ext = ct === "image/webp" ? "webp" : "jpg";
           setFile(new File([webpBlob], `${baseName}.${ext}`, { type: ct }));
@@ -456,6 +479,7 @@ export function CreateFlow() {
                     setCrop({ x: 0, y: 0 });
                     setZoom(1);
                     setCroppedAreaPixels(null);
+                    autoCropZoomKeyRef.current = null;
                   }}
                   className={`rounded-full px-4 py-2 text-sm ${
                     aspect === p.value ? "bg-ink text-cream" : "bg-cream-deep/80 text-ink hover:bg-cream-deep"
@@ -496,7 +520,8 @@ export function CreateFlow() {
             <div>
               <label className="text-sm text-muted">Zoom in or out</label>
               <p className="mt-1 text-xs text-muted">
-                Drag left to see more of your photo in the frame, right to zoom in tighter.
+                Drag left to see more of your photo in the frame, right to zoom in tighter. If the subject looks cut off
+                on one side, drag the photo inside the frame or zoom out until it fits.
               </p>
               <input
                 type="range"
