@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { uploadAdminDemoZipAndSignUrl } from "@/lib/admin-demo-storage";
 import { isAdminEmail } from "@/lib/auth-admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { buildWebappDownloadShowcaseZip } from "@/lib/webapp-download-showcase";
@@ -59,12 +60,18 @@ export async function POST(request: Request) {
 
   const filename = `StitchMint-webapp-download-showcase-${baseTitle.replace(/\s+/g, "-")}.zip`.replace(/[^a-zA-Z0-9._-]/g, "");
 
-  return new NextResponse(new Uint8Array(mega), {
-    status: 200,
-    headers: {
-      "Content-Type": "application/zip",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      "Cache-Control": "no-store",
-    },
-  });
+  try {
+    const { url } = await uploadAdminDemoZipAndSignUrl(user.id, mega);
+    return NextResponse.json({ url, filename }, { status: 200, headers: { "Cache-Control": "no-store" } });
+  } catch (storageErr) {
+    console.error("[webapp-download-showcase] Supabase upload failed, falling back to inline ZIP", storageErr);
+    return new NextResponse(new Uint8Array(mega), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  }
 }

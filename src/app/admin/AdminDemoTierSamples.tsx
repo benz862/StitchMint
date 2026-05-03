@@ -15,6 +15,52 @@ function parseFilenameFromContentDisposition(header: string | null): string | nu
   }
 }
 
+/** Large ZIPs return JSON `{ url, filename }` (Supabase signed URL) to avoid Vercel response size limits. */
+async function downloadZipFromAdminResponse(
+  res: Response,
+  fallbackFilename: string,
+): Promise<{ emailStatus: string | null }> {
+  const ct = res.headers.get("content-type") ?? "";
+  if (ct.includes("application/json")) {
+    const j = (await res.json()) as { url?: string; filename?: string; emailStatus?: string };
+    if (!j.url) throw new Error("No download URL in response");
+    const name = j.filename ?? fallbackFilename;
+    let blob: Blob;
+    try {
+      const r2 = await fetch(j.url, { mode: "cors" });
+      if (!r2.ok) throw new Error("bad status");
+      blob = await r2.blob();
+    } catch {
+      window.location.href = j.url;
+      return { emailStatus: j.emailStatus ?? null };
+    }
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = name;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objectUrl);
+    return { emailStatus: j.emailStatus ?? null };
+  }
+  const emailStatus = res.headers.get("x-demo-email-status");
+  const blob = await res.blob();
+  const cd = res.headers.get("content-disposition");
+  const name = parseFilenameFromContentDisposition(cd) ?? fallbackFilename;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  return { emailStatus };
+}
+
 export function AdminDemoTierSamples() {
   const id = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -50,7 +96,6 @@ export function AdminDemoTierSamples() {
         fd.append("file", file);
         if (alsoEmail && canEmail) fd.append("alsoEmail", "1");
         const res = await fetch("/api/admin/demo-tier-samples", { method: "POST", body: fd });
-        const emailStatus = res.headers.get("x-demo-email-status") ?? "";
         if (!res.ok) {
           const j = (await res.json().catch(() => ({}))) as { error?: string };
           const fallback =
@@ -59,25 +104,14 @@ export function AdminDemoTierSamples() {
               : `Request failed (${res.status})`;
           throw new Error(j.error ?? fallback);
         }
-        const blob = await res.blob();
-        const cd = res.headers.get("content-disposition");
-        const name = parseFilenameFromContentDisposition(cd) ?? "StitchMint-tier-samples.zip";
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = name;
-        a.rel = "noopener";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
+        const { emailStatus } = await downloadZipFromAdminResponse(res, "StitchMint-tier-samples.zip");
 
         let msg = "Your sample pack download has started.";
         if (alsoEmail && canEmail) {
           if (emailStatus === "sent") msg += " A copy was emailed to you.";
           else if (emailStatus === "missing-resend")
             msg += " Email was not sent (set RESEND_API_KEY on the server).";
-          else if (emailStatus.startsWith("failed:")) msg += ` Email failed: ${emailStatus.slice(7)}`;
+          else if (emailStatus?.startsWith("failed:")) msg += ` Email failed: ${emailStatus.slice(7)}`;
         }
         setMessage(msg);
         input.value = "";
@@ -133,18 +167,7 @@ export function AdminDemoTierSamples() {
             : `Request failed (${res.status})`;
         throw new Error(j.error ?? fallback);
       }
-      const blob = await res.blob();
-      const cd = res.headers.get("content-disposition");
-      const name = parseFilenameFromContentDisposition(cd) ?? "StitchMint-webapp-download-showcase.zip";
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = name;
-      a.rel = "noopener";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      await downloadZipFromAdminResponse(res, "StitchMint-webapp-download-showcase.zip");
       setMessage("Web app showcase download started (bundles + unpacked for Basic, Premium, Pro).");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { isAdminEmail } from "@/lib/auth-admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { uploadAdminDemoZipAndSignUrl } from "@/lib/admin-demo-storage";
 import { getResendApiKey, getResendFrom, resendApiKeyMissingHint } from "@/lib/resend-config";
 import { buildTierSamplesMegaZip } from "@/lib/tier-sample-pack";
 
@@ -96,13 +97,22 @@ export async function POST(request: Request) {
 
   const filename = `StitchMint-tier-samples-${baseTitle.replace(/\s+/g, "-")}.zip`.replace(/[^a-zA-Z0-9._-]/g, "");
 
-  return new NextResponse(new Uint8Array(mega), {
-    status: 200,
-    headers: {
-      "Content-Type": "application/zip",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      "X-Demo-Email-Status": emailStatus,
-      "Cache-Control": "no-store",
-    },
-  });
+  try {
+    const { url } = await uploadAdminDemoZipAndSignUrl(user.id, mega);
+    return NextResponse.json(
+      { url, filename, emailStatus },
+      { status: 200, headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (storageErr) {
+    console.error("[demo-tier-samples] Supabase upload failed, falling back to inline ZIP body", storageErr);
+    return new NextResponse(new Uint8Array(mega), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "X-Demo-Email-Status": emailStatus,
+        "Cache-Control": "no-store",
+      },
+    });
+  }
 }
