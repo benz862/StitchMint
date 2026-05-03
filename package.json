@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "sample-zips": "tsx scripts/generate-sample-zips.ts"
+    "sample-zips": "tsx scripts/generate-sample-zips.ts",
+    "sample:webapp-showcase": "tsx scripts/build-webapp-download-showcase.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",

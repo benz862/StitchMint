@@ -47,6 +47,7 @@ yarn-error.log*
 
 # local tier sample ZIPs (npm run sample-zips)
 /tier-samples-out/
+/webapp-showcase-out/
 
 # typescript
 *.tsbuildinfo
