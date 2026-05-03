@@ -11,6 +11,7 @@ import {
 } from "@/lib/pattern-service";
 import type { CropPercent } from "@/lib/pattern-engine";
 import { getPricingTierById, inferPricingTierFromEngine, normalizePricingTierId } from "@/config/pricing";
+import { STORAGE_BUCKETS } from "@/lib/buckets";
 import { checkoutSummaryForPatternRow } from "@/lib/pricing-checkout";
 import { difficultyLabel } from "@/lib/stitchability";
 
@@ -52,6 +53,16 @@ async function handleGet(ctx: { params: Promise<{ id: string }> }) {
     previewUrl = signed?.signedUrl ?? null;
   }
 
+  /** Lets the owner re-open the create flow to adjust crop/tier before purchase. */
+  let originalImageUrl: string | null = null;
+  const paid = String(data.payment_status ?? "") === "paid";
+  if (!paid && data.original_image_url) {
+    const { data: signedOrig } = await admin.storage
+      .from(STORAGE_BUCKETS.originals)
+      .createSignedUrl(data.original_image_url as string, 60 * 30);
+    originalImageUrl = signedOrig?.signedUrl ?? null;
+  }
+
   const { data: colorRows } = await supabase
     .from("pattern_colors")
     .select("dmc_number, dmc_name, hex, stitch_count")
@@ -74,6 +85,7 @@ async function handleGet(ctx: { params: Promise<{ id: string }> }) {
   return NextResponse.json({
     pattern: safe,
     previewUrl,
+    originalImageUrl,
     palettePreview,
     stats: { difficultyLabel: difficultyLabel(score) },
     checkout: checkoutSummaryForPatternRow(data),
@@ -103,6 +115,13 @@ async function handlePatch(request: Request, ctx: { params: Promise<{ id: string
   if (row.user_id !== user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   if (!row.original_image_url) {
     return NextResponse.json({ error: "Original image missing" }, { status: 400 });
+  }
+
+  if (String(row.payment_status ?? "") === "paid") {
+    return NextResponse.json(
+      { error: "This pattern is already unlocked. Download it from your preview or My patterns." },
+      { status: 403 },
+    );
   }
 
   const body = (await request.json()) as Partial<PatternSettings> & { title?: string; pricingTier?: string };
@@ -171,6 +190,11 @@ async function handlePatch(request: Request, ctx: { params: Promise<{ id: string
       avgBlockSize: pattern.avgBlockSize,
     };
 
+    const clearStaleCheckout =
+      String(row.payment_status ?? "") === "pending_payment"
+        ? { stripe_session_id: null as string | null, payment_status: "draft" as const }
+        : {};
+
     const { error: upPatternErr } = await admin
       .from("patterns")
       .update({
@@ -188,6 +212,7 @@ async function handlePatch(request: Request, ctx: { params: Promise<{ id: string
         crop: settings.crop as unknown as Record<string, number>,
         grid_json: gridPayload as unknown as Record<string, unknown>,
         generation_error: null,
+        ...clearStaleCheckout,
       })
       .eq("id", id);
 

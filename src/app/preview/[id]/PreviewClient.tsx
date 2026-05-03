@@ -131,9 +131,19 @@ export function PreviewClient() {
           <p className="text-xs uppercase tracking-[0.2em] text-muted">Preview</p>
           <h1 className="font-serif text-3xl text-ink sm:text-4xl">{pattern.title ?? "Your pattern"}</h1>
         </div>
-        <button type="button" onClick={() => router.push("/create")} className="text-sm text-muted hover:text-ink">
-          New pattern
-        </button>
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          {pattern.payment_status !== "paid" ? (
+            <Link
+              href={`/create?resume=${id}`}
+              className="rounded-full border border-line bg-card px-4 py-2 text-sm font-medium text-ink hover:bg-cream-deep/80"
+            >
+              Edit pattern
+            </Link>
+          ) : null}
+          <button type="button" onClick={() => router.push("/create")} className="text-sm text-muted hover:text-ink">
+            New pattern
+          </button>
+        </div>
       </div>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
@@ -232,7 +242,12 @@ export function PreviewClient() {
             <>
             <p className="rounded-2xl border border-line bg-cream/50 px-4 py-3 text-xs leading-relaxed text-muted">
               Unlock includes <span className="font-medium text-ink">two chart PDFs</span> (regular + large print) for the same pattern — no
-              extra fee. Pick the version that is easiest for you to read and print.
+              extra fee. Pick the version that is easiest for you to read and print. You can{" "}
+              <Link href={`/create?resume=${id}`} className="font-medium text-ink underline underline-offset-2 hover:text-ink/80">
+                edit the draft
+              </Link>{" "}
+              (crop, text, tier, fabric) and rebuild the preview until you pay; your ZIP matches the preview at the moment payment
+              completes.
             </p>
             <button
               type="button"

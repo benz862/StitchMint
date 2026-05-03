@@ -3,14 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Cropper, { Area, type MediaSize } from "react-easy-crop";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { PRICING_TIERS, type PricingTierId } from "@/config/pricing";
 import { FABRIC_COUNTS } from "@/lib/constants";
 import { STORAGE_BUCKETS } from "@/lib/buckets";
-import type { TextCurve, TextTypography } from "@/lib/canvas-crop-text";
+import type { TextTypography } from "@/lib/canvas-crop-text";
 import {
-  ARC_SCALE_MAX,
-  ARC_SCALE_MIN,
   composeCroppedImageWithOverlay,
   defaultTextTypography,
   FONT_SIZE_SCALE_MAX,
@@ -21,6 +19,7 @@ import { CropTextLiveOverlay } from "@/components/create/CropTextLiveOverlay";
 import { encodeCanvasToWebpBlob, encodeImageFileToWebpBlob, getEncodedOutputSize } from "@/lib/encode-original-client";
 import { finishedSizeInches, inchesToCm } from "@/lib/measurements";
 import type { CropPercent } from "@/lib/pattern-engine";
+import { getPricingTierIdFromPatternRow } from "@/lib/pricing-checkout";
 import { readApiJson } from "@/lib/read-api-json";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -50,8 +49,60 @@ function hexForColorInput(c: string) {
   return "#ffffff";
 }
 
+/** Survives remounts: after text+composite upload, server must use 100% crop on that file. */
+const FULL_FRAME_ORIGINAL_PREFIX = "stitchmint:origFullFrame:";
+
+function fullFrameOriginalKey(patternId: string) {
+  return `${FULL_FRAME_ORIGINAL_PREFIX}${patternId}`;
+}
+
+function readFullFrameOriginal(patternId: string | null): boolean {
+  if (typeof window === "undefined" || !patternId) return false;
+  try {
+    return sessionStorage.getItem(fullFrameOriginalKey(patternId)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeFullFrameOriginal(patternId: string) {
+  try {
+    sessionStorage.setItem(fullFrameOriginalKey(patternId), "1");
+  } catch {
+    /* private mode / quota */
+  }
+}
+
+function clearFullFrameOriginalMarkers() {
+  if (typeof window === "undefined") return;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i);
+      if (k?.startsWith(FULL_FRAME_ORIGINAL_PREFIX)) keys.push(k);
+    }
+    for (const k of keys) sessionStorage.removeItem(k);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Stored crop from last preview build — if full frame, the uploaded original is already the final composite. */
+function cropIsNearlyFullFrame(c: unknown): boolean {
+  if (!c || typeof c !== "object") return false;
+  const o = c as Record<string, unknown>;
+  const x = Number(o.x);
+  const y = Number(o.y);
+  const w = Number(o.width);
+  const h = Number(o.height);
+  if (![x, y, w, h].every((n) => Number.isFinite(n))) return false;
+  return x <= 0.51 && y <= 0.51 && w >= 99.49 && h >= 99.49;
+}
+
 export function CreateFlow() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const resumeHydratedRef = useRef<string | null>(null);
   const [step, setStep] = useState<Step>(1);
   const [file, setFile] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -68,14 +119,19 @@ export function CreateFlow() {
   const [overlayText, setOverlayText] = useState("");
   const [textAnchorX, setTextAnchorX] = useState(50);
   const [textAnchorY, setTextAnchorY] = useState(82);
-  const [textCurve, setTextCurve] = useState<TextCurve>("none");
-  const [textArcScale, setTextArcScale] = useState(1);
   const [textTypography, setTextTypography] = useState<TextTypography>(() => defaultTextTypography());
   const [textColor, setTextColor] = useState("#ffffff");
 
   const cropWrapRef = useRef<HTMLDivElement>(null);
   const textAnchorRef = useRef({ x: 50, y: 82 });
   const textDragRef = useRef<{ id: number; ox: number; oy: number; sx: number; sy: number } | null>(null);
+  /**
+   * After we upload the crop+text bitmap, storage holds the final pixels. `react-easy-crop` then fires
+   * `onCropComplete` for the *new* image using crop % that still matched the *original* photo — PATCH would
+   * extract the wrong rectangle (e.g. name lands on the dog). When true, we always send 100% crop and
+   * ignore stray `onCropComplete` pixel updates for that image.
+   */
+  const patternCropIsEntireUploadRef = useRef(false);
 
   useEffect(() => {
     textAnchorRef.current = { x: textAnchorX, y: textAnchorY };
@@ -122,6 +178,103 @@ export function CreateFlow() {
   const [pricingTierId, setPricingTierId] = useState<PricingTierId>("plus");
   const [fabric, setFabric] = useState<14 | 16 | 18>(16);
 
+  useEffect(() => {
+    const rid = searchParams.get("resume")?.trim();
+    if (!rid) return;
+    if (resumeHydratedRef.current === rid) return;
+    let cancelled = false;
+
+    void (async () => {
+      setBusy(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/patterns/${rid}`);
+        const json = await readApiJson<{
+          error?: string;
+          pattern?: Record<string, unknown>;
+          originalImageUrl?: string | null;
+        }>(res);
+        if (cancelled) return;
+        if (!res.ok) throw new Error(json.error ?? "Could not load pattern to edit");
+        const row = json.pattern;
+        if (!row) throw new Error("Could not load pattern to edit");
+        if (String(row.payment_status ?? "") === "paid") {
+          router.replace(`/preview/${rid}`);
+          return;
+        }
+        const origUrl = json.originalImageUrl;
+        if (!origUrl) throw new Error("Original photo is missing for this pattern.");
+
+        const imgRes = await fetch(origUrl);
+        if (!imgRes.ok) throw new Error("Could not download your photo for editing.");
+        const blob = await imgRes.blob();
+        if (cancelled) return;
+        const mime = blob.type?.includes("webp")
+          ? "image/webp"
+          : blob.type?.includes("png")
+            ? "image/png"
+            : "image/jpeg";
+        const ext = mime === "image/webp" ? "webp" : mime === "image/png" ? "png" : "jpg";
+        const f = new File([blob], `pattern-${rid}.${ext}`, { type: mime });
+
+        setFile(f);
+        setImageUrl((prevUrl) => {
+          if (prevUrl) URL.revokeObjectURL(prevUrl);
+          return URL.createObjectURL(blob);
+        });
+        setOverlayText("");
+        setTextAnchorX(50);
+        setTextAnchorY(82);
+        setTextTypography(defaultTextTypography());
+        setTextColor("#ffffff");
+        setCrop({ x: 0, y: 0 });
+        setZoom(1);
+        setCroppedAreaPixels(null);
+        setMediaSize(null);
+
+        if (cropIsNearlyFullFrame(row.crop)) {
+          patternCropIsEntireUploadRef.current = true;
+          writeFullFrameOriginal(rid);
+        } else {
+          patternCropIsEntireUploadRef.current = false;
+          try {
+            sessionStorage.removeItem(fullFrameOriginalKey(rid));
+          } catch {
+            /* ignore */
+          }
+        }
+
+        const tier = getPricingTierIdFromPatternRow({
+          pricing_tier: row.pricing_tier as string | null | undefined,
+          difficulty_mode: row.difficulty_mode as string | null | undefined,
+          stitch_width_setting: row.stitch_width_setting as number | null | undefined,
+          stitch_width: row.stitch_width as number | null | undefined,
+          stitch_height: row.stitch_height as number | null | undefined,
+          color_count: row.color_count as number | null | undefined,
+          total_stitches: row.total_stitches as number | null | undefined,
+        });
+        setPricingTierId(tier);
+
+        const fc = Number(row.fabric_count);
+        if (fc === 14 || fc === 16 || fc === 18) setFabric(fc);
+
+        if (cancelled) return;
+        setPatternId(rid);
+        setStep(2);
+        resumeHydratedRef.current = rid;
+        router.replace("/create", { scroll: false });
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Could not resume editing");
+      } finally {
+        setBusy(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, router]);
+
   const stitchWidth = useMemo(() => {
     const tier = PRICING_TIERS.find((t) => t.id === pricingTierId);
     return tier?.engine.stitchWidth ?? 120;
@@ -134,27 +287,36 @@ export function CreateFlow() {
   const onSelectFile = (f: File | null) => {
     setError(null);
     if (!f) return;
+    clearFullFrameOriginalMarkers();
+    setPatternId(null);
     setFile(f);
     if (imageUrl) URL.revokeObjectURL(imageUrl);
     setImageUrl(URL.createObjectURL(f));
+    patternCropIsEntireUploadRef.current = false;
     setCrop({ x: 0, y: 0 });
     setZoom(1);
     setCroppedAreaPixels(null);
     setOverlayText("");
     setTextAnchorX(50);
     setTextAnchorY(82);
-    setTextCurve("none");
-    setTextArcScale(1);
     setTextTypography(defaultTextTypography());
     setTextColor("#ffffff");
     setStep(2);
   };
 
-  const onCropComplete = useCallback((_area: Area, pixels: Area) => {
-    setCroppedAreaPixels(pixels);
-  }, []);
+  const onCropComplete = useCallback(
+    (_area: Area, pixels: Area) => {
+      if (patternCropIsEntireUploadRef.current) return;
+      if (readFullFrameOriginal(patternId)) return;
+      setCroppedAreaPixels(pixels);
+    },
+    [patternId],
+  );
 
   const percentCrop = useCallback((): CropPercent => {
+    if (patternCropIsEntireUploadRef.current || readFullFrameOriginal(patternId)) {
+      return { x: 0, y: 0, width: 100, height: 100 };
+    }
     if (!mediaSize?.naturalWidth || !mediaSize.naturalHeight) {
       return { x: 0, y: 0, width: 100, height: 100 };
     }
@@ -169,7 +331,7 @@ export function CreateFlow() {
       width: clampPercent((croppedAreaPixels.width / nw) * 100),
       height: clampPercent((croppedAreaPixels.height / nh) * 100),
     };
-  }, [croppedAreaPixels, mediaSize]);
+  }, [croppedAreaPixels, mediaSize, patternId]);
 
   const pickTextColorFromScreen = async () => {
     type EyeCtor = new () => { open: () => Promise<{ sRGBHex: string }> };
@@ -200,14 +362,20 @@ export function CreateFlow() {
     setBusy(true);
     setError(null);
     try {
-      const draftRes = await fetch("/api/patterns", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "My Pattern" }),
-      });
-      const draft = await readApiJson<{ error?: string; id?: string }>(draftRes);
-      if (!draftRes.ok) throw new Error(draft.error ?? "Could not start upload");
-      if (!draft.id) throw new Error("Could not start upload");
+      let draftId: string;
+      if (!patternId) {
+        const draftRes = await fetch("/api/patterns", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "My Pattern" }),
+        });
+        const draft = await readApiJson<{ error?: string; id?: string }>(draftRes);
+        if (!draftRes.ok) throw new Error(draft.error ?? "Could not start upload");
+        if (!draft.id) throw new Error("Could not start upload");
+        draftId = draft.id;
+      } else {
+        draftId = patternId;
+      }
 
       const supabase = createSupabaseBrowserClient();
       const {
@@ -223,8 +391,6 @@ export function CreateFlow() {
           text: trimmedOverlay,
           anchorX: textAnchorX,
           anchorY: textAnchorY,
-          curve: textCurve,
-          arcScale: textArcScale,
           typography: textTypography,
           color: textColor,
         });
@@ -233,6 +399,8 @@ export function CreateFlow() {
         const prevUrl = imageUrl;
         const baseName = file.name.replace(/\.[^.]+$/i, "") || "photo";
         afterTextUpload = () => {
+          patternCropIsEntireUploadRef.current = true;
+          writeFullFrameOriginal(draftId);
           const nextUrl = URL.createObjectURL(webpBlob);
           if (prevUrl) URL.revokeObjectURL(prevUrl);
           setImageUrl(nextUrl);
@@ -255,7 +423,7 @@ export function CreateFlow() {
 
       const contentType = webpBlob.type === "image/webp" ? "image/webp" : "image/jpeg";
       const ext = contentType === "image/webp" ? "webp" : "jpg";
-      const storagePath = `${user.id}/${draft.id}/original.${ext}`;
+      const storagePath = `${user.id}/${draftId}/original.${ext}`;
 
       const { error: upErr } = await supabase.storage
         .from(STORAGE_BUCKETS.originals)
@@ -265,12 +433,12 @@ export function CreateFlow() {
       const { error: updErr } = await supabase
         .from("patterns")
         .update({ original_image_url: storagePath })
-        .eq("id", draft.id);
+        .eq("id", draftId);
       if (updErr) throw new Error(updErr.message ?? "Could not attach image to pattern");
 
       afterTextUpload?.();
 
-      setPatternId(draft.id);
+      setPatternId(draftId);
       setStep(3);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
@@ -385,8 +553,6 @@ export function CreateFlow() {
                   text={overlayText}
                   anchorX={textAnchorX}
                   anchorY={textAnchorY}
-                  curve={textCurve}
-                  arcScale={textArcScale}
                   typography={textTypography}
                   color={textColor}
                   dragHandlers={textDragHandlers}
@@ -412,10 +578,8 @@ export function CreateFlow() {
             <div className="rounded-2xl border border-line bg-cream/50 p-4 sm:p-5">
               <h2 className="text-sm font-medium text-ink">Text on your photo (optional)</h2>
               <p className="mt-1 text-xs text-muted">
-                Type below — a live preview appears on the crop. <strong className="font-medium text-ink">Straight:</strong>{" "}
-                drag the text to move it. <strong className="font-medium text-ink">Curved (one line):</strong> drag the
-                grip on the photo to move the line; use <em>Curve up / down</em> for bend direction and{" "}
-                <em>Bend amount</em> for how strong the arc is.
+                Type below — a live preview appears on the crop. Drag the text block to position it; what you see in the
+                frame (crop + text) is what we send to the pattern engine.
               </p>
               <div className="mt-4 grid gap-4 text-left sm:grid-cols-2">
                 <div className="sm:col-span-2">
@@ -466,57 +630,6 @@ export function CreateFlow() {
                       Bottom center
                     </button>
                   </div>
-                </div>
-                <div className="sm:col-span-2">
-                  <p className="text-sm text-muted">Curve (single line only)</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {(
-                      [
-                        { id: "none" as const, label: "Straight" },
-                        { id: "arcUp" as const, label: "Curve up" },
-                        { id: "arcDown" as const, label: "Curve down" },
-                      ] satisfies { id: TextCurve; label: string }[]
-                    ).map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => setTextCurve(c.id)}
-                        className={`rounded-full px-4 py-2 text-sm ${
-                          textCurve === c.id ? "bg-ink text-cream" : "bg-cream-deep/80 text-ink hover:bg-cream-deep"
-                        }`}
-                      >
-                        {c.label}
-                      </button>
-                    ))}
-                  </div>
-                  {textCurve !== "none" ? (
-                    <div className="mt-4">
-                      <label htmlFor="stitchmint-arc-scale" className="text-sm text-muted">
-                        Bend amount — {Math.round(textArcScale * 100)}% (how deep the arc is)
-                      </label>
-                      <input
-                        id="stitchmint-arc-scale"
-                        type="range"
-                        min={ARC_SCALE_MIN}
-                        max={ARC_SCALE_MAX}
-                        step={0.05}
-                        value={textArcScale}
-                        onChange={(e) => setTextArcScale(Number(e.target.value))}
-                        className="mt-2 w-full accent-ink"
-                      />
-                      <p className="mt-1 flex flex-wrap justify-between gap-2 text-xs text-muted">
-                        <span>Shallow</span>
-                        <button
-                          type="button"
-                          className="rounded-full border border-line bg-card px-2 py-0.5 text-ink hover:bg-cream-deep/80"
-                          onClick={() => setTextArcScale(1)}
-                        >
-                          Reset bend
-                        </button>
-                        <span>Deep</span>
-                      </p>
-                    </div>
-                  ) : null}
                 </div>
                 <div>
                   <label htmlFor="stitchmint-font-family" className="text-sm text-muted">

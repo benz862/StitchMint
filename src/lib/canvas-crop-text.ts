@@ -1,18 +1,7 @@
 import type { Area } from "react-easy-crop";
 
-export type TextCurve = "none" | "arcUp" | "arcDown";
-
 export const FONT_SIZE_SCALE_MIN = 0.35;
 export const FONT_SIZE_SCALE_MAX = 2.5;
-
-/** How deep the curved text bend is (1 = default). */
-export const ARC_SCALE_MIN = 0.15;
-export const ARC_SCALE_MAX = 2.5;
-
-export function clampArcScale(v: number | undefined): number {
-  const s = typeof v === "number" && Number.isFinite(v) ? v : 1;
-  return Math.min(ARC_SCALE_MAX, Math.max(ARC_SCALE_MIN, s));
-}
 
 export type TextTypography = {
   fontId: string;
@@ -28,9 +17,6 @@ export type TextOverlaySpec = {
   /** Anchor in crop space, 0–100 (% of width / height). */
   anchorX: number;
   anchorY: number;
-  curve: TextCurve;
-  /** Bend strength when curve is arc up/down (default 1). Ignored when straight. */
-  arcScale?: number;
   typography: TextTypography;
   color: string;
 };
@@ -78,8 +64,6 @@ function scaledFontSize(basePx: number, canvasShortEdge: number, typography: Tex
   const cap = Math.max(48, Math.min(320, Math.round(canvasShortEdge * 0.62)));
   return Math.max(8, Math.min(cap, scaled));
 }
-
-type Vec = { x: number; y: number };
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -190,103 +174,6 @@ function drawStraightAtAnchor(
   });
 }
 
-function quadPoint(p0: Vec, p1: Vec, p2: Vec, t: number): Vec {
-  const u = 1 - t;
-  return {
-    x: u * u * p0.x + 2 * u * t * p1.x + t * t * p2.x,
-    y: u * u * p0.y + 2 * u * t * p1.y + t * t * p2.y,
-  };
-}
-
-function quadTangent(p0: Vec, p1: Vec, p2: Vec, t: number): Vec {
-  return {
-    x: 2 * (1 - t) * (p1.x - p0.x) + 2 * t * (p2.x - p1.x),
-    y: 2 * (1 - t) * (p1.y - p0.y) + 2 * t * (p2.y - p1.y),
-  };
-}
-
-function approxQuadLength(p0: Vec, p1: Vec, p2: Vec, samples = 40): number {
-  let len = 0;
-  let prev = p0;
-  for (let i = 1; i <= samples; i++) {
-    const t = i / samples;
-    const pt = quadPoint(p0, p1, p2, t);
-    len += Math.hypot(pt.x - prev.x, pt.y - prev.y);
-    prev = pt;
-  }
-  return len;
-}
-
-function drawCurvedLine(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  p0: Vec,
-  p1: Vec,
-  p2: Vec,
-  typography: TextTypography,
-  color: string,
-  fontSize: number,
-) {
-  ctx.font = buildFontCss(typography, fontSize);
-  const chars = [...text];
-  if (chars.length === 0) return;
-  let total = 0;
-  const widths: number[] = [];
-  for (const ch of chars) {
-    const w = ctx.measureText(ch).width;
-    widths.push(w);
-    total += w;
-  }
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = color;
-  ctx.strokeStyle = "rgba(0,0,0,0.35)";
-  ctx.lineWidth = Math.max(2, fontSize * 0.09);
-  ctx.lineJoin = "round";
-  let acc = 0;
-  for (let i = 0; i < chars.length; i++) {
-    const w = widths[i]!;
-    const mid = acc + w / 2;
-    const t = 0.02 + (mid / Math.max(total, 1)) * 0.96;
-    const pt = quadPoint(p0, p1, p2, t);
-    const tan = quadTangent(p0, p1, p2, t);
-    const angle = Math.atan2(tan.y, tan.x);
-    const ch = chars[i]!;
-    ctx.save();
-    ctx.translate(pt.x, pt.y);
-    ctx.rotate(angle);
-    ctx.strokeText(ch, 0, 0);
-    ctx.fillText(ch, 0, 0);
-    ctx.restore();
-    acc += w;
-  }
-}
-
-/**
- * Full-width chord so the arc never degenerates when the anchor is near a corner.
- * Horizontal “peak” of the bend follows anchorX; vertical position follows anchorY.
- */
-function curveControlPoints(
-  cw: number,
-  ch: number,
-  anchorX: number,
-  anchorY: number,
-  curve: Exclude<TextCurve, "none">,
-  arcScale: number,
-): { p0: Vec; p1: Vec; p2: Vec } {
-  const margin = Math.max(10, Math.min(24, cw * 0.02));
-  const ay = (anchorY / 100) * ch;
-  const p0: Vec = { x: margin, y: ay };
-  const p2: Vec = { x: cw - margin, y: ay };
-  const arc = Math.min(cw, ch) * 0.1 * arcScale;
-  const p1x = Math.max(margin + 6, Math.min(cw - margin - 6, (anchorX / 100) * cw));
-  const p1: Vec =
-    curve === "arcUp"
-      ? { x: p1x, y: ay - arc }
-      : { x: p1x, y: ay + arc };
-  return { p0, p1, p2 };
-}
-
 function drawOverlay(ctx: CanvasRenderingContext2D, cw: number, ch: number, spec: TextOverlaySpec) {
   const rawLines = spec.text.replace(/\r\n/g, "\n").split("\n");
   const lines = rawLines.map((s) => s.trim()).filter((s) => s.length > 0);
@@ -294,27 +181,6 @@ function drawOverlay(ctx: CanvasRenderingContext2D, cw: number, ch: number, spec
 
   const ax = (spec.anchorX / 100) * cw;
   const ay = (spec.anchorY / 100) * ch;
-  const useCurve = spec.curve !== "none" && lines.length === 1;
-  const single = lines[0]!;
-
-  if (useCurve) {
-    const arcScale = clampArcScale(spec.arcScale);
-    const bend: Exclude<TextCurve, "none"> = spec.curve === "arcUp" ? "arcUp" : "arcDown";
-    const { p0, p1, p2 } = curveControlPoints(cw, ch, spec.anchorX, spec.anchorY, bend, arcScale);
-    const arcLen = approxQuadLength(p0, p1, p2);
-    let fs = Math.min(64, Math.max(16, Math.round(ch * 0.065)));
-    const min = 14;
-    while (fs > min) {
-      ctx.font = buildFontCss(spec.typography, fs);
-      const tw = ctx.measureText(single).width;
-      if (tw <= arcLen * 0.88) break;
-      fs -= 2;
-    }
-    const fsScaled = scaledFontSize(fs, Math.min(cw, ch), spec.typography);
-    drawCurvedLine(ctx, single, p0, p1, p2, spec.typography, spec.color, fsScaled);
-    return;
-  }
-
   drawStraightAtAnchor(ctx, lines, cw, ch, ax, ay, spec.typography, spec.color);
 }
 
