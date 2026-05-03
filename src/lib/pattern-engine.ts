@@ -48,6 +48,8 @@ export type PatternResult = {
   palette: PatternColorRow[];
   previewPng: Buffer;
   simulatedPng: Buffer;
+  /** WYSIWYG composition (cropped photo + overlay text), pre-quantization, downscaled for web. */
+  compositionPng?: Buffer;
   totalStitches: number;
   colorCount: number;
   stitchabilityScore: number;
@@ -236,6 +238,17 @@ export async function generatePattern(input: PatternGenerateInput): Promise<Patt
   const previewPng = await renderPreviewPng(dmcGrid, palette, w, h, 10);
   const simulatedPng = await renderPreviewPng(dmcGrid, palette, w, h, 6);
 
+  /**
+   * "Composition" PNG = the user's cropped photo with the title overlay rasterized in (pre-quantization). This
+   * is the WYSIWYG source of truth — what the user composed in the editor, downscaled to a reasonable web
+   * display size. We show it on the preview page so the title is always readable, separately from the stitched
+   * simulation which is necessarily quantized into DMC colors.
+   */
+  const compositionPng = await sharp(cropBuffer)
+    .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true, kernel: sharp.kernel.lanczos3 })
+    .png({ compressionLevel: 9 })
+    .toBuffer();
+
   return {
     stitchWidth: w,
     stitchHeight: h,
@@ -244,6 +257,7 @@ export async function generatePattern(input: PatternGenerateInput): Promise<Patt
     palette,
     previewPng,
     simulatedPng,
+    compositionPng,
     totalStitches: total,
     colorCount: palette.length,
     stitchabilityScore,

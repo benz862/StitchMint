@@ -26,12 +26,16 @@ type PatternRow = {
   payment_status: string | null;
 };
 
+type ViewMode = "composition" | "stitched";
+
 export function PreviewClient() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const id = params.id;
   const [pattern, setPattern] = useState<PatternRow | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [compositionUrl, setCompositionUrl] = useState<string | null>(null);
+  const [view, setView] = useState<ViewMode>("composition");
   const [palettePreview, setPalettePreview] = useState<
     { dmcNumber: string; dmcName: string; hex: string; stitchCount: number }[]
   >([]);
@@ -48,6 +52,7 @@ export function PreviewClient() {
         error?: string;
         pattern?: PatternRow;
         previewUrl?: string | null;
+        compositionUrl?: string | null;
         palettePreview?: { dmcNumber: string; dmcName: string; hex: string; stitchCount: number }[];
         stats?: { difficultyLabel?: string };
         checkout?: CheckoutSummary;
@@ -63,6 +68,8 @@ export function PreviewClient() {
       }
       setPattern(json.pattern);
       setPreviewUrl(json.previewUrl ?? null);
+      setCompositionUrl(json.compositionUrl ?? null);
+      setView(json.compositionUrl ? "composition" : "stitched");
       setPalettePreview(json.palettePreview ?? []);
       setDifficultyLabel(json.stats?.difficultyLabel ?? "");
       setCheckoutSummary(json.checkout ?? null);
@@ -148,25 +155,67 @@ export function PreviewClient() {
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="rounded-3xl border border-line bg-card shadow-sm">
-          {previewUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element -- signed external URL; intrinsic size must match PNG for correct aspect
-            <img
-              src={previewUrl}
-              alt="Stitch simulation preview"
-              width={previewPixelSize?.w ?? 400}
-              height={previewPixelSize?.h ?? 400}
-              className="mx-auto block h-auto max-h-[min(88vh,2200px)] w-full max-w-full object-contain"
-              decoding="async"
-            />
+          {compositionUrl || previewUrl ? (
+            <>
+              {compositionUrl ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line/80 px-4 py-3">
+                  <div className="inline-flex rounded-full border border-line bg-cream/60 p-1 text-xs font-medium">
+                    <button
+                      type="button"
+                      onClick={() => setView("composition")}
+                      className={`rounded-full px-3 py-1 transition ${
+                        view === "composition" ? "bg-ink text-cream" : "text-muted hover:text-ink"
+                      }`}
+                    >
+                      Your design
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setView("stitched")}
+                      className={`rounded-full px-3 py-1 transition ${
+                        view === "stitched" ? "bg-ink text-cream" : "text-muted hover:text-ink"
+                      }`}
+                    >
+                      Stitch simulation
+                    </button>
+                  </div>
+                  <span className="text-xs text-muted">
+                    {view === "composition"
+                      ? "Exactly what you composed."
+                      : "Each square is one stitch in DMC thread color."}
+                  </span>
+                </div>
+              ) : null}
+              {view === "composition" && compositionUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- signed external URL
+                <img
+                  src={compositionUrl}
+                  alt="Your composition"
+                  className="mx-auto block h-auto max-h-[min(88vh,2200px)] w-full max-w-full object-contain"
+                  decoding="async"
+                />
+              ) : previewUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- signed external URL; intrinsic size must match PNG for correct aspect
+                <img
+                  src={previewUrl}
+                  alt="Stitch simulation preview"
+                  width={previewPixelSize?.w ?? 400}
+                  height={previewPixelSize?.h ?? 400}
+                  className="mx-auto block h-auto max-h-[min(88vh,2200px)] w-full max-w-full object-contain"
+                  decoding="async"
+                />
+              ) : (
+                <div className="flex h-80 items-center justify-center text-sm text-muted">Preview not ready yet.</div>
+              )}
+              <p className="border-t border-line/80 px-4 py-3 text-center text-xs text-muted">
+                {view === "composition"
+                  ? "Your design at full resolution. The stitch simulation shows how DMC threads will render this in fabric."
+                  : "Stitch simulation — each square is one stitch in DMC thread color. Title text becomes part of the stitched grid."}
+              </p>
+            </>
           ) : (
             <div className="flex h-80 items-center justify-center text-sm text-muted">Preview not ready yet.</div>
           )}
-          {previewUrl ? (
-            <p className="border-t border-line/80 px-4 py-3 text-center text-xs text-muted">
-              This image is a large stitch simulation (each square is one stitch). Any text you added is represented as
-              colored stitches, not as sharp lettering.
-            </p>
-          ) : null}
         </div>
 
         <div className="space-y-4">

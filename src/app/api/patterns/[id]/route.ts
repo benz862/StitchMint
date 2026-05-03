@@ -6,6 +6,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import {
   downloadOriginalBufferForGeneration,
   runPatternGeneration,
+  uploadCompositionPng,
   uploadPreviewPng,
   type PatternSettings,
 } from "@/lib/pattern-service";
@@ -53,6 +54,14 @@ async function handleGet(ctx: { params: Promise<{ id: string }> }) {
     previewUrl = signed?.signedUrl ?? null;
   }
 
+  let compositionUrl: string | null = null;
+  if (data.composition_image_url) {
+    const { data: signedComp } = await admin.storage
+      .from("previews")
+      .createSignedUrl(data.composition_image_url as string, 60 * 30);
+    compositionUrl = signedComp?.signedUrl ?? null;
+  }
+
   /** Lets the owner re-open the create flow to adjust crop/tier before purchase. */
   let originalImageUrl: string | null = null;
   const paid = String(data.payment_status ?? "") === "paid";
@@ -85,6 +94,7 @@ async function handleGet(ctx: { params: Promise<{ id: string }> }) {
   return NextResponse.json({
     pattern: safe,
     previewUrl,
+    compositionUrl,
     originalImageUrl,
     palettePreview,
     stats: { difficultyLabel: difficultyLabel(score) },
@@ -176,6 +186,9 @@ async function handlePatch(request: Request, ctx: { params: Promise<{ id: string
     const original = await downloadOriginalBufferForGeneration(generationRow);
     const pattern = await runPatternGeneration(original, settings, generationRow);
     const previewPath = await uploadPreviewPng(id, pattern.previewPng);
+    const compositionPath = pattern.compositionPng
+      ? await uploadCompositionPng(id, pattern.compositionPng)
+      : null;
 
     const gridPayload = {
       grid: pattern.grid,
@@ -201,6 +214,7 @@ async function handlePatch(request: Request, ctx: { params: Promise<{ id: string
       .update({
         title: settings.title,
         preview_image_url: previewPath,
+        composition_image_url: compositionPath,
         stitch_width: pattern.stitchWidth,
         stitch_height: pattern.stitchHeight,
         fabric_count: settings.fabricCount,

@@ -66,6 +66,17 @@ export async function uploadPreviewPng(patternId: string, png: Buffer): Promise<
   return path;
 }
 
+export async function uploadCompositionPng(patternId: string, png: Buffer): Promise<string> {
+  const supabase = createServiceRoleClient();
+  const path = `${patternId}/composition.png`;
+  const { error } = await supabase.storage.from(STORAGE_BUCKETS.previews).upload(path, png, {
+    contentType: "image/png",
+    upsert: true,
+  });
+  if (error) throw new Error(error.message);
+  return path;
+}
+
 export async function uploadZipPackage(patternId: string, zip: Buffer): Promise<string> {
   const supabase = createServiceRoleClient();
   const path = `${patternId}/StitchMint-Pattern.zip`;
