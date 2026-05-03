@@ -7,7 +7,9 @@ import { useRouter } from "next/navigation";
 import { PRICING_TIERS, type PricingTierId } from "@/config/pricing";
 import { FABRIC_COUNTS } from "@/lib/constants";
 import { STORAGE_BUCKETS } from "@/lib/buckets";
-import { encodeImageFileToWebpBlob } from "@/lib/encode-original-client";
+import type { TextCurve, TextFontStyle, TextPlacement } from "@/lib/canvas-crop-text";
+import { composeCroppedImageWithOverlay } from "@/lib/canvas-crop-text";
+import { encodeCanvasToWebpBlob, encodeImageFileToWebpBlob, getEncodedOutputSize } from "@/lib/encode-original-client";
 import { finishedSizeInches, inchesToCm } from "@/lib/measurements";
 import type { CropPercent } from "@/lib/pattern-engine";
 import { readApiJson } from "@/lib/read-api-json";
@@ -44,6 +46,12 @@ export function CreateFlow() {
   const [aspect, setAspect] = useState<(typeof ASPECT_PRESETS)[number]["value"]>(3 / 4);
   const [mediaSize, setMediaSize] = useState<MediaSize | null>(null);
 
+  const [overlayText, setOverlayText] = useState("");
+  const [textPlacement, setTextPlacement] = useState<TextPlacement>("bottom");
+  const [textCurve, setTextCurve] = useState<TextCurve>("none");
+  const [textFontStyle, setTextFontStyle] = useState<TextFontStyle>("sansRegular");
+  const [textColor, setTextColor] = useState("#ffffff");
+
   const [pricingTierId, setPricingTierId] = useState<PricingTierId>("plus");
   const [fabric, setFabric] = useState<14 | 16 | 18>(16);
 
@@ -65,6 +73,11 @@ export function CreateFlow() {
     setCrop({ x: 0, y: 0 });
     setZoom(1);
     setCroppedAreaPixels(null);
+    setOverlayText("");
+    setTextPlacement("bottom");
+    setTextCurve("none");
+    setTextFontStyle("sansRegular");
+    setTextColor("#ffffff");
     setStep(2);
   };
 
@@ -89,8 +102,32 @@ export function CreateFlow() {
     };
   }, [croppedAreaPixels, mediaSize]);
 
+  const pickTextColorFromScreen = async () => {
+    type EyeCtor = new () => { open: () => Promise<{ sRGBHex: string }> };
+    const Eye = (typeof window !== "undefined" ? (window as unknown as { EyeDropper?: EyeCtor }).EyeDropper : undefined) as
+      | EyeCtor
+      | undefined;
+    if (!Eye) {
+      window.alert("Color picking from the screen needs a supported browser (e.g. Chrome or Edge) and a secure (https) page.");
+      return;
+    }
+    try {
+      const { sRGBHex } = await new Eye().open();
+      setTextColor(sRGBHex);
+    } catch {
+      /* user cancelled */
+    }
+  };
+
   const upload = async () => {
     if (!file) return;
+    const trimmedOverlay = overlayText.trim();
+    const useTextOverlay = trimmedOverlay.length > 0;
+    if (useTextOverlay && (!imageUrl || !croppedAreaPixels)) {
+      setError("Adjust the crop frame slightly so the preview can lock in, then try again.");
+      return;
+    }
+
     setBusy(true);
     setError(null);
     try {
@@ -109,7 +146,42 @@ export function CreateFlow() {
       } = await supabase.auth.getUser();
       if (!user) throw new Error("You need to be signed in to upload.");
 
-      const webpBlob = await encodeImageFileToWebpBlob(file);
+      let webpBlob: Blob;
+      let afterTextUpload: (() => void) | null = null;
+
+      if (useTextOverlay && imageUrl && croppedAreaPixels) {
+        const canvas = await composeCroppedImageWithOverlay(imageUrl, croppedAreaPixels, {
+          text: trimmedOverlay,
+          placement: textPlacement,
+          curve: textCurve,
+          fontStyle: textFontStyle,
+          color: textColor,
+        });
+        webpBlob = await encodeCanvasToWebpBlob(canvas);
+        const { width: ow, height: oh } = getEncodedOutputSize(canvas.width, canvas.height);
+        const prevUrl = imageUrl;
+        const baseName = file.name.replace(/\.[^.]+$/i, "") || "photo";
+        afterTextUpload = () => {
+          const nextUrl = URL.createObjectURL(webpBlob);
+          if (prevUrl) URL.revokeObjectURL(prevUrl);
+          setImageUrl(nextUrl);
+          setMediaSize({
+            width: ow,
+            height: oh,
+            naturalWidth: ow,
+            naturalHeight: oh,
+          });
+          setCroppedAreaPixels({ x: 0, y: 0, width: ow, height: oh });
+          setCrop({ x: 0, y: 0 });
+          setZoom(1);
+          const ct = webpBlob.type === "image/webp" ? "image/webp" : "image/jpeg";
+          const ext = ct === "image/webp" ? "webp" : "jpg";
+          setFile(new File([webpBlob], `${baseName}.${ext}`, { type: ct }));
+        };
+      } else {
+        webpBlob = await encodeImageFileToWebpBlob(file);
+      }
+
       const contentType = webpBlob.type === "image/webp" ? "image/webp" : "image/jpeg";
       const ext = contentType === "image/webp" ? "webp" : "jpg";
       const storagePath = `${user.id}/${draft.id}/original.${ext}`;
@@ -124,6 +196,8 @@ export function CreateFlow() {
         .update({ original_image_url: storagePath })
         .eq("id", draft.id);
       if (updErr) throw new Error(updErr.message ?? "Could not attach image to pattern");
+
+      afterTextUpload?.();
 
       setPatternId(draft.id);
       setStep(3);
@@ -248,13 +322,129 @@ export function CreateFlow() {
                 className="mt-2 w-full accent-ink"
               />
             </div>
+
+            <details className="rounded-2xl border border-line bg-cream/50 px-4 py-3 [&_summary]:cursor-pointer [&_summary]:select-none [&_summary]:list-none [&_summary::-webkit-details-marker]:hidden">
+              <summary className="text-sm font-medium text-ink">Add text on your photo (optional)</summary>
+              <div className="mt-4 space-y-4 text-left">
+                <div>
+                  <label htmlFor="stitchmint-overlay-text" className="text-sm text-muted">
+                    Text
+                  </label>
+                  <textarea
+                    id="stitchmint-overlay-text"
+                    value={overlayText}
+                    onChange={(e) => setOverlayText(e.target.value)}
+                    maxLength={200}
+                    rows={2}
+                    placeholder="e.g. Happy Birthday, a name, or a date"
+                    className="mt-2 w-full resize-y rounded-xl border border-line bg-card px-3 py-2 text-sm text-ink placeholder:text-muted"
+                  />
+                  <p className="mt-1 text-xs text-muted">
+                    Text is drawn on the cropped area when you continue. Curved styles apply to a single line; use line
+                    breaks for stacked straight lines.
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted">Position</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(
+                      [
+                        { id: "top" as const, label: "Top" },
+                        { id: "bottom" as const, label: "Bottom" },
+                      ] satisfies { id: TextPlacement; label: string }[]
+                    ).map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setTextPlacement(p.id)}
+                        className={`rounded-full px-4 py-2 text-sm ${
+                          textPlacement === p.id ? "bg-ink text-cream" : "bg-cream-deep/80 text-ink hover:bg-cream-deep"
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm text-muted">Curve (single line)</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(
+                      [
+                        { id: "none" as const, label: "Straight" },
+                        { id: "arcUp" as const, label: "Curve up" },
+                        { id: "arcDown" as const, label: "Curve down" },
+                      ] satisfies { id: TextCurve; label: string }[]
+                    ).map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setTextCurve(c.id)}
+                        className={`rounded-full px-4 py-2 text-sm ${
+                          textCurve === c.id ? "bg-ink text-cream" : "bg-cream-deep/80 text-ink hover:bg-cream-deep"
+                        }`}
+                      >
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm text-muted">Font</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setTextFontStyle("serifBold")}
+                      className={`rounded-full px-4 py-2 text-sm font-bold ${
+                        textFontStyle === "serifBold" ? "bg-ink text-cream" : "bg-cream-deep/80 font-serif text-ink hover:bg-cream-deep"
+                      }`}
+                    >
+                      Serif bold
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTextFontStyle("sansRegular")}
+                      className={`rounded-full px-4 py-2 text-sm font-normal ${
+                        textFontStyle === "sansRegular" ? "bg-ink text-cream" : "bg-cream-deep/80 font-sans text-ink hover:bg-cream-deep"
+                      }`}
+                    >
+                      Sans-serif regular
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm text-muted">Color</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-3">
+                    <input
+                      type="color"
+                      value={textColor.length === 7 && textColor.startsWith("#") ? textColor : "#ffffff"}
+                      onChange={(e) => setTextColor(e.target.value)}
+                      className="h-10 w-14 cursor-pointer rounded-lg border border-line bg-card p-1"
+                      aria-label="Text color"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void pickTextColorFromScreen()}
+                      className="rounded-full border border-line bg-card px-4 py-2 text-xs font-medium text-ink hover:bg-cream-deep/80"
+                    >
+                      Eyedropper (pick from screen)
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs text-muted">
+                    Eyedropper uses your browser and works best on a secure (https) connection; choose any pixel on the
+                    screen after clicking.
+                  </p>
+                </div>
+              </div>
+            </details>
+
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
               <button type="button" className="rounded-full px-5 py-3 text-sm text-muted hover:bg-cream-deep/80" onClick={() => setStep(1)}>
                 Back
               </button>
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || (overlayText.trim().length > 0 && !croppedAreaPixels)}
                 onClick={upload}
                 className="rounded-full bg-ink px-6 py-3 text-sm font-medium text-cream shadow disabled:opacity-50"
               >
