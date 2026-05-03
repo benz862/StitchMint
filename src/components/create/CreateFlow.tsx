@@ -1,14 +1,15 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Cropper, { Area, type MediaSize } from "react-easy-crop";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PRICING_TIERS, type PricingTierId } from "@/config/pricing";
 import { FABRIC_COUNTS } from "@/lib/constants";
 import { STORAGE_BUCKETS } from "@/lib/buckets";
-import type { TextCurve, TextFontStyle, TextPlacement } from "@/lib/canvas-crop-text";
-import { composeCroppedImageWithOverlay } from "@/lib/canvas-crop-text";
+import type { TextCurve, TextTypography } from "@/lib/canvas-crop-text";
+import { composeCroppedImageWithOverlay, defaultTextTypography, OVERLAY_FONT_OPTIONS } from "@/lib/canvas-crop-text";
+import { CropTextLiveOverlay } from "@/components/create/CropTextLiveOverlay";
 import { encodeCanvasToWebpBlob, encodeImageFileToWebpBlob, getEncodedOutputSize } from "@/lib/encode-original-client";
 import { finishedSizeInches, inchesToCm } from "@/lib/measurements";
 import type { CropPercent } from "@/lib/pattern-engine";
@@ -31,6 +32,16 @@ function clampPercent(n: number) {
   return Math.max(0, Math.min(100, n));
 }
 
+function hexForColorInput(c: string) {
+  const t = c.trim();
+  if (/^#[0-9a-f]{6}$/i.test(t)) return t;
+  if (/^#[0-9a-f]{3}$/i.test(t)) {
+    const s = t.slice(1);
+    return `#${s[0]}${s[0]}${s[1]}${s[1]}${s[2]}${s[2]}`;
+  }
+  return "#ffffff";
+}
+
 export function CreateFlow() {
   const router = useRouter();
   const [step, setStep] = useState<Step>(1);
@@ -47,10 +58,57 @@ export function CreateFlow() {
   const [mediaSize, setMediaSize] = useState<MediaSize | null>(null);
 
   const [overlayText, setOverlayText] = useState("");
-  const [textPlacement, setTextPlacement] = useState<TextPlacement>("bottom");
+  const [textAnchorX, setTextAnchorX] = useState(50);
+  const [textAnchorY, setTextAnchorY] = useState(82);
   const [textCurve, setTextCurve] = useState<TextCurve>("none");
-  const [textFontStyle, setTextFontStyle] = useState<TextFontStyle>("sansRegular");
+  const [textTypography, setTextTypography] = useState<TextTypography>(() => defaultTextTypography());
   const [textColor, setTextColor] = useState("#ffffff");
+
+  const cropWrapRef = useRef<HTMLDivElement>(null);
+  const textAnchorRef = useRef({ x: 50, y: 82 });
+  const textDragRef = useRef<{ id: number; ox: number; oy: number; sx: number; sy: number } | null>(null);
+
+  useEffect(() => {
+    textAnchorRef.current = { x: textAnchorX, y: textAnchorY };
+  }, [textAnchorX, textAnchorY]);
+
+  const onTextDragDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const a = textAnchorRef.current;
+    textDragRef.current = { id: e.pointerId, ox: a.x, oy: a.y, sx: e.clientX, sy: e.clientY };
+  }, []);
+
+  const onTextDragMove = useCallback((e: React.PointerEvent) => {
+    const d = textDragRef.current;
+    if (!d || d.id !== e.pointerId || !cropWrapRef.current) return;
+    const r = cropWrapRef.current.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return;
+    const dx = ((e.clientX - d.sx) / r.width) * 100;
+    const dy = ((e.clientY - d.sy) / r.height) * 100;
+    setTextAnchorX(Math.min(97, Math.max(3, d.ox + dx)));
+    setTextAnchorY(Math.min(97, Math.max(3, d.oy + dy)));
+  }, []);
+
+  const onTextDragUp = useCallback((e: React.PointerEvent) => {
+    if (textDragRef.current?.id === e.pointerId) textDragRef.current = null;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      /* not captured */
+    }
+  }, []);
+
+  const textDragHandlers = useMemo(
+    () => ({
+      onPointerDown: onTextDragDown,
+      onPointerMove: onTextDragMove,
+      onPointerUp: onTextDragUp,
+      onPointerCancel: onTextDragUp,
+    }),
+    [onTextDragDown, onTextDragMove, onTextDragUp],
+  );
 
   const [pricingTierId, setPricingTierId] = useState<PricingTierId>("plus");
   const [fabric, setFabric] = useState<14 | 16 | 18>(16);
@@ -74,9 +132,10 @@ export function CreateFlow() {
     setZoom(1);
     setCroppedAreaPixels(null);
     setOverlayText("");
-    setTextPlacement("bottom");
+    setTextAnchorX(50);
+    setTextAnchorY(82);
     setTextCurve("none");
-    setTextFontStyle("sansRegular");
+    setTextTypography(defaultTextTypography());
     setTextColor("#ffffff");
     setStep(2);
   };
@@ -152,9 +211,10 @@ export function CreateFlow() {
       if (useTextOverlay && imageUrl && croppedAreaPixels) {
         const canvas = await composeCroppedImageWithOverlay(imageUrl, croppedAreaPixels, {
           text: trimmedOverlay,
-          placement: textPlacement,
+          anchorX: textAnchorX,
+          anchorY: textAnchorY,
           curve: textCurve,
-          fontStyle: textFontStyle,
+          typography: textTypography,
           color: textColor,
         });
         webpBlob = await encodeCanvasToWebpBlob(canvas);
@@ -292,7 +352,10 @@ export function CreateFlow() {
                 </button>
               ))}
             </div>
-            <div className="relative h-[320px] w-full overflow-hidden rounded-2xl bg-black/5 sm:h-[420px]">
+            <div
+              ref={cropWrapRef}
+              className="relative h-[320px] w-full overflow-hidden rounded-2xl bg-black/5 sm:h-[420px]"
+            >
               <Cropper
                 image={imageUrl}
                 crop={crop}
@@ -306,6 +369,17 @@ export function CreateFlow() {
                 onMediaLoaded={setMediaSize}
                 showGrid={false}
               />
+              {overlayText.trim().length > 0 ? (
+                <CropTextLiveOverlay
+                  text={overlayText}
+                  anchorX={textAnchorX}
+                  anchorY={textAnchorY}
+                  curve={textCurve}
+                  typography={textTypography}
+                  color={textColor}
+                  dragHandlers={textDragHandlers}
+                />
+              ) : null}
             </div>
             <div>
               <label className="text-sm text-muted">Zoom in or out</label>
@@ -323,10 +397,14 @@ export function CreateFlow() {
               />
             </div>
 
-            <details className="rounded-2xl border border-line bg-cream/50 px-4 py-3 [&_summary]:cursor-pointer [&_summary]:select-none [&_summary]:list-none [&_summary::-webkit-details-marker]:hidden">
-              <summary className="text-sm font-medium text-ink">Add text on your photo (optional)</summary>
-              <div className="mt-4 space-y-4 text-left">
-                <div>
+            <div className="rounded-2xl border border-line bg-cream/50 p-4 sm:p-5">
+              <h2 className="text-sm font-medium text-ink">Text on your photo (optional)</h2>
+              <p className="mt-1 text-xs text-muted">
+                Type below — a live preview appears on the crop. Drag the text (or the round handle on curved text) to
+                position it. Curved styles use one line only; use Enter for multiple straight lines.
+              </p>
+              <div className="mt-4 grid gap-4 text-left sm:grid-cols-2">
+                <div className="sm:col-span-2">
                   <label htmlFor="stitchmint-overlay-text" className="text-sm text-muted">
                     Text
                   </label>
@@ -335,35 +413,44 @@ export function CreateFlow() {
                     value={overlayText}
                     onChange={(e) => setOverlayText(e.target.value)}
                     maxLength={200}
-                    rows={2}
+                    rows={3}
                     placeholder="e.g. Happy Birthday, a name, or a date"
                     className="mt-2 w-full resize-y rounded-xl border border-line bg-card px-3 py-2 text-sm text-ink placeholder:text-muted"
                   />
-                  <p className="mt-1 text-xs text-muted">
-                    Text is drawn on the cropped area when you continue. Curved styles apply to a single line; use line
-                    breaks for stacked straight lines.
-                  </p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted">Position</p>
+                  <p className="text-sm text-muted">Quick position</p>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {(
-                      [
-                        { id: "top" as const, label: "Top" },
-                        { id: "bottom" as const, label: "Bottom" },
-                      ] satisfies { id: TextPlacement; label: string }[]
-                    ).map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => setTextPlacement(p.id)}
-                        className={`rounded-full px-4 py-2 text-sm ${
-                          textPlacement === p.id ? "bg-ink text-cream" : "bg-cream-deep/80 text-ink hover:bg-cream-deep"
-                        }`}
-                      >
-                        {p.label}
-                      </button>
-                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTextAnchorX(50);
+                        setTextAnchorY(12);
+                      }}
+                      className="rounded-full bg-cream-deep/80 px-4 py-2 text-sm text-ink hover:bg-cream-deep"
+                    >
+                      Top center
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTextAnchorX(50);
+                        setTextAnchorY(50);
+                      }}
+                      className="rounded-full bg-cream-deep/80 px-4 py-2 text-sm text-ink hover:bg-cream-deep"
+                    >
+                      Center
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTextAnchorX(50);
+                        setTextAnchorY(82);
+                      }}
+                      className="rounded-full bg-cream-deep/80 px-4 py-2 text-sm text-ink hover:bg-cream-deep"
+                    >
+                      Bottom center
+                    </button>
                   </div>
                 </div>
                 <div>
@@ -390,34 +477,77 @@ export function CreateFlow() {
                   </div>
                 </div>
                 <div>
-                  <p className="text-sm text-muted">Font</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setTextFontStyle("serifBold")}
-                      className={`rounded-full px-4 py-2 text-sm font-bold ${
-                        textFontStyle === "serifBold" ? "bg-ink text-cream" : "bg-cream-deep/80 font-serif text-ink hover:bg-cream-deep"
-                      }`}
-                    >
-                      Serif bold
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setTextFontStyle("sansRegular")}
-                      className={`rounded-full px-4 py-2 text-sm font-normal ${
-                        textFontStyle === "sansRegular" ? "bg-ink text-cream" : "bg-cream-deep/80 font-sans text-ink hover:bg-cream-deep"
-                      }`}
-                    >
-                      Sans-serif regular
-                    </button>
-                  </div>
+                  <label htmlFor="stitchmint-font-family" className="text-sm text-muted">
+                    Font
+                  </label>
+                  <select
+                    id="stitchmint-font-family"
+                    value={textTypography.fontId}
+                    onChange={(e) => setTextTypography((t) => ({ ...t, fontId: e.target.value }))}
+                    className="mt-2 w-full rounded-xl border border-line bg-card px-3 py-2 text-sm text-ink"
+                  >
+                    {OVERLAY_FONT_OPTIONS.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
+                  <label htmlFor="stitchmint-font-weight" className="text-sm text-muted">
+                    Weight
+                  </label>
+                  <select
+                    id="stitchmint-font-weight"
+                    value={textTypography.fontWeight}
+                    onChange={(e) => setTextTypography((t) => ({ ...t, fontWeight: Number(e.target.value) }))}
+                    className="mt-2 w-full rounded-xl border border-line bg-card px-3 py-2 text-sm text-ink"
+                  >
+                    {(
+                      [
+                        [300, "Light"],
+                        [400, "Regular"],
+                        [500, "Medium"],
+                        [600, "Semibold"],
+                        [700, "Bold"],
+                        [800, "Extra bold"],
+                      ] as const
+                    ).map(([w, label]) => (
+                      <option key={w} value={w}>
+                        {label} ({w})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <p className="text-sm text-muted">Style</p>
+                  <div className="mt-2 flex flex-wrap gap-4">
+                    <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+                      <input
+                        type="checkbox"
+                        checked={textTypography.italic}
+                        onChange={(e) => setTextTypography((t) => ({ ...t, italic: e.target.checked }))}
+                        className="rounded border-line accent-ink"
+                      />
+                      Italic
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+                      <input
+                        type="checkbox"
+                        checked={textTypography.underline}
+                        onChange={(e) => setTextTypography((t) => ({ ...t, underline: e.target.checked }))}
+                        className="rounded border-line accent-ink"
+                      />
+                      Underline
+                    </label>
+                  </div>
+                </div>
+                <div className="sm:col-span-2">
                   <p className="text-sm text-muted">Color</p>
                   <div className="mt-2 flex flex-wrap items-center gap-3">
                     <input
                       type="color"
-                      value={textColor.length === 7 && textColor.startsWith("#") ? textColor : "#ffffff"}
+                      value={hexForColorInput(textColor)}
                       onChange={(e) => setTextColor(e.target.value)}
                       className="h-10 w-14 cursor-pointer rounded-lg border border-line bg-card p-1"
                       aria-label="Text color"
@@ -427,16 +557,15 @@ export function CreateFlow() {
                       onClick={() => void pickTextColorFromScreen()}
                       className="rounded-full border border-line bg-card px-4 py-2 text-xs font-medium text-ink hover:bg-cream-deep/80"
                     >
-                      Eyedropper (pick from screen)
+                      Eyedropper (screen)
                     </button>
                   </div>
                   <p className="mt-1 text-xs text-muted">
-                    Eyedropper uses your browser and works best on a secure (https) connection; choose any pixel on the
-                    screen after clicking.
+                    Eyedropper: supported in Chrome and Edge on https — samples any pixel on screen after you click.
                   </p>
                 </div>
               </div>
-            </details>
+            </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
               <button type="button" className="rounded-full px-5 py-3 text-sm text-muted hover:bg-cream-deep/80" onClick={() => setStep(1)}>

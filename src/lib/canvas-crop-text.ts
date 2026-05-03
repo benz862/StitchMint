@@ -1,16 +1,51 @@
 import type { Area } from "react-easy-crop";
 
-export type TextPlacement = "top" | "bottom";
 export type TextCurve = "none" | "arcUp" | "arcDown";
-export type TextFontStyle = "serifBold" | "sansRegular";
+
+export type TextTypography = {
+  fontId: string;
+  fontWeight: number;
+  italic: boolean;
+  underline: boolean;
+};
 
 export type TextOverlaySpec = {
   text: string;
-  placement: TextPlacement;
+  /** Anchor in crop space, 0–100 (% of width / height). */
+  anchorX: number;
+  anchorY: number;
   curve: TextCurve;
-  fontStyle: TextFontStyle;
+  typography: TextTypography;
   color: string;
 };
+
+export const OVERLAY_FONT_OPTIONS = [
+  { id: "georgia", label: "Georgia", stack: 'Georgia, "Times New Roman", Times, serif' },
+  { id: "times", label: "Times New Roman", stack: '"Times New Roman", Times, serif' },
+  { id: "system", label: "System UI", stack: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif' },
+  { id: "arial", label: "Arial", stack: "Arial, Helvetica, sans-serif" },
+  { id: "verdana", label: "Verdana", stack: "Verdana, Geneva, sans-serif" },
+  { id: "courier", label: "Courier New", stack: '"Courier New", Courier, monospace' },
+  { id: "impact", label: "Impact", stack: 'Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif' },
+  { id: "palatino", label: "Palatino", stack: 'Palatino, "Palatino Linotype", "Book Antiqua", Georgia, serif' },
+  { id: "trebuchet", label: "Trebuchet MS", stack: '"Trebuchet MS", "Lucida Grande", Lucida, sans-serif' },
+] as const;
+
+export function fontStackFromId(id: string): string {
+  const o = OVERLAY_FONT_OPTIONS.find((f) => f.id === id);
+  return o?.stack ?? OVERLAY_FONT_OPTIONS[2].stack;
+}
+
+export function buildFontCss(typography: TextTypography, fontSize: number): string {
+  const stylePart = typography.italic ? "italic " : "normal ";
+  const stack = fontStackFromId(typography.fontId);
+  const w = Math.min(900, Math.max(100, typography.fontWeight));
+  return `${stylePart}${w} ${fontSize}px ${stack}`;
+}
+
+export function defaultTextTypography(): TextTypography {
+  return { fontId: "system", fontWeight: 400, italic: false, underline: false };
+}
 
 type Vec = { x: number; y: number };
 
@@ -49,25 +84,18 @@ export function cropImageToCanvas(img: HTMLImageElement, crop: Area): HTMLCanvas
   return canvas;
 }
 
-function fontCss(style: TextFontStyle, fontSize: number): string {
-  if (style === "serifBold") {
-    return `700 ${fontSize}px Georgia, "Times New Roman", Times, serif`;
-  }
-  return `400 ${fontSize}px system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
-}
-
 function fitFontSize(
   ctx: CanvasRenderingContext2D,
   lines: string[],
-  style: TextFontStyle,
+  typography: TextTypography,
   maxWidth: number,
   maxBand: number,
 ): number {
   let size = Math.min(64, Math.max(16, Math.round(maxBand * 0.22)));
   const min = 14;
   while (size >= min) {
-    ctx.font = fontCss(style, size);
-    const lineHeight = size * 1.25;
+    ctx.font = buildFontCss(typography, size);
+    const lineHeight = size * 1.28;
     const totalH = lines.length * lineHeight;
     if (totalH > maxBand) {
       size -= 2;
@@ -80,34 +108,52 @@ function fitFontSize(
   return min;
 }
 
-function drawStraightBlock(
+function drawUnderline(ctx: CanvasRenderingContext2D, cx: number, y: number, text: string, fontSize: number) {
+  const w = ctx.measureText(text).width;
+  const pad = Math.max(2, fontSize * 0.06);
+  ctx.beginPath();
+  ctx.strokeStyle = ctx.fillStyle;
+  ctx.lineWidth = Math.max(1.5, fontSize * 0.07);
+  ctx.lineCap = "round";
+  ctx.moveTo(cx - w / 2, y + pad);
+  ctx.lineTo(cx + w / 2, y + pad);
+  ctx.stroke();
+}
+
+function drawStraightAtAnchor(
   ctx: CanvasRenderingContext2D,
   lines: string[],
   cw: number,
   ch: number,
-  placement: TextPlacement,
-  style: TextFontStyle,
+  ax: number,
+  ay: number,
+  typography: TextTypography,
   color: string,
 ) {
-  const padX = cw * 0.06;
-  const maxW = cw - padX * 2;
-  const maxBand = ch * 0.32;
-  const fontSize = fitFontSize(ctx, lines, style, maxW, maxBand);
-  ctx.font = fontCss(style, fontSize);
-  const lineH = fontSize * 1.25;
+  const padX = cw * 0.05;
+  const maxW = Math.min(cw - padX * 2, Math.min(ax, cw - ax) * 2 * 0.95 + padX);
+  const maxBand = ch * 0.4;
+  const fontSize = fitFontSize(ctx, lines, typography, maxW, maxBand);
+  ctx.font = buildFontCss(typography, fontSize);
+  const lineH = fontSize * 1.28;
   const totalH = lines.length * lineH;
-  const margin = ch * 0.05;
-  const startY = placement === "top" ? margin + fontSize * 0.55 : ch - margin - totalH + fontSize * 0.55;
+  const startY = ay - totalH / 2 + fontSize * 0.72;
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = color;
-  ctx.strokeStyle = "rgba(0,0,0,0.32)";
+  ctx.strokeStyle = "rgba(0,0,0,0.35)";
   ctx.lineWidth = Math.max(2, fontSize * 0.09);
   ctx.lineJoin = "round";
   lines.forEach((line, i) => {
     const y = startY + i * lineH;
-    ctx.strokeText(line, cw / 2, y);
-    ctx.fillText(line, cw / 2, y);
+    ctx.strokeText(line, ax, y);
+    ctx.fillText(line, ax, y);
+    if (typography.underline) {
+      ctx.save();
+      ctx.lineWidth = Math.max(1.5, fontSize * 0.07);
+      drawUnderline(ctx, ax, y, line, fontSize);
+      ctx.restore();
+    }
   });
 }
 
@@ -144,11 +190,11 @@ function drawCurvedLine(
   p0: Vec,
   p1: Vec,
   p2: Vec,
-  style: TextFontStyle,
+  typography: TextTypography,
   color: string,
   fontSize: number,
 ) {
-  ctx.font = fontCss(style, fontSize);
+  ctx.font = buildFontCss(typography, fontSize);
   const chars = [...text];
   if (chars.length === 0) return;
   let total = 0;
@@ -161,7 +207,7 @@ function drawCurvedLine(
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = color;
-  ctx.strokeStyle = "rgba(0,0,0,0.32)";
+  ctx.strokeStyle = "rgba(0,0,0,0.35)";
   ctx.lineWidth = Math.max(2, fontSize * 0.09);
   ctx.lineJoin = "round";
   let acc = 0;
@@ -183,39 +229,52 @@ function drawCurvedLine(
   }
 }
 
+function curveControlPoints(
+  cw: number,
+  ch: number,
+  anchorX: number,
+  anchorY: number,
+  curve: TextCurve,
+): { p0: Vec; p1: Vec; p2: Vec } {
+  const ax = (anchorX / 100) * cw;
+  const ay = (anchorY / 100) * ch;
+  const halfW = Math.min(cw * 0.42, ax - 4, cw - ax - 4);
+  const arc = Math.min(cw, ch) * 0.055;
+  const p0: Vec = { x: ax - halfW, y: ay };
+  const p2: Vec = { x: ax + halfW, y: ay };
+  const p1: Vec =
+    curve === "arcUp"
+      ? { x: ax, y: ay - arc }
+      : { x: ax, y: ay + arc };
+  return { p0, p1, p2 };
+}
+
 function drawOverlay(ctx: CanvasRenderingContext2D, cw: number, ch: number, spec: TextOverlaySpec) {
   const rawLines = spec.text.replace(/\r\n/g, "\n").split("\n");
   const lines = rawLines.map((s) => s.trim()).filter((s) => s.length > 0);
   if (lines.length === 0) return;
 
+  const ax = (spec.anchorX / 100) * cw;
+  const ay = (spec.anchorY / 100) * ch;
   const useCurve = spec.curve !== "none" && lines.length === 1;
   const single = lines[0]!;
 
   if (useCurve) {
-    const padX = cw * 0.1;
-    const margin = ch * 0.07;
-    const arc = Math.min(cw, ch) * 0.055;
-    const baselineY = spec.placement === "top" ? margin + ch * 0.035 : ch - margin - ch * 0.035;
-    const p0: Vec = { x: padX, y: baselineY };
-    const p2: Vec = { x: cw - padX, y: baselineY };
-    const p1: Vec =
-      spec.curve === "arcUp"
-        ? { x: cw / 2, y: baselineY - arc }
-        : { x: cw / 2, y: baselineY + arc };
+    const { p0, p1, p2 } = curveControlPoints(cw, ch, spec.anchorX, spec.anchorY, spec.curve);
     const arcLen = approxQuadLength(p0, p1, p2);
     let fs = Math.min(64, Math.max(16, Math.round(ch * 0.065)));
     const min = 14;
     while (fs > min) {
-      ctx.font = fontCss(spec.fontStyle, fs);
+      ctx.font = buildFontCss(spec.typography, fs);
       const tw = ctx.measureText(single).width;
       if (tw <= arcLen * 0.88) break;
       fs -= 2;
     }
-    drawCurvedLine(ctx, single, p0, p1, p2, spec.fontStyle, spec.color, fs);
+    drawCurvedLine(ctx, single, p0, p1, p2, spec.typography, spec.color, fs);
     return;
   }
 
-  drawStraightBlock(ctx, lines, cw, ch, spec.placement, spec.fontStyle, spec.color);
+  drawStraightAtAnchor(ctx, lines, cw, ch, ax, ay, spec.typography, spec.color);
 }
 
 /** Loads the image, crops to `pixelCrop`, then draws text overlay when `spec.text` is non-empty. */
