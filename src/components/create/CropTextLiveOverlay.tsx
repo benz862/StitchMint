@@ -42,7 +42,8 @@ export function CropTextLiveOverlay({
   const t = color.trim();
   const safeColor =
     /^#[0-9a-f]{6}$/i.test(t) ? t : /^#[0-9a-f]{3}$/i.test(t) ? `#${t[1]}${t[1]}${t[2]}${t[2]}${t[3]}${t[3]}` : "#ffffff";
-  /** Match the auto contrasting outline applied server-side so the editor preview matches the stitched output. */
+  /** Outline only when the user opts in; matches the server-side rasterizer. */
+  const wantsOutline = typography.outline;
   const isLight = (() => {
     const m = safeColor.replace("#", "");
     const r = parseInt(m.slice(0, 2), 16);
@@ -51,7 +52,7 @@ export function CropTextLiveOverlay({
     if (![r, g, b].every((v) => Number.isFinite(v))) return true;
     return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.55;
   })();
-  const outline = isLight ? "#000000" : "#ffffff";
+  const outlineColor = isLight ? "#000000" : "#ffffff";
 
   return (
     <div
@@ -69,7 +70,7 @@ export function CropTextLiveOverlay({
         fontStyle: typography.italic ? "italic" : "normal",
         textDecoration: typography.underline ? "underline" : "none",
         color: safeColor,
-        WebkitTextStroke: `1px ${outline}`,
+        WebkitTextStroke: wantsOutline ? `1px ${outlineColor}` : undefined,
         fontSize: `clamp(${11 * sizeS}px, ${2.9 * sizeS}vmin, ${28 * sizeS}px)`,
         lineHeight: 1.28,
         whiteSpace: "pre-wrap",

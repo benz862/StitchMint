@@ -8,6 +8,8 @@ export type TextTypography = {
   fontWeight: number;
   italic: boolean;
   underline: boolean;
+  /** When true, draws a thin contrasting stroke around the text for legibility on busy backgrounds. */
+  outline: boolean;
   /** Multiplier on the auto-fit size (preview + export). */
   sizeScale: number;
 };
@@ -46,7 +48,7 @@ export function buildFontCss(typography: TextTypography, fontSize: number): stri
 }
 
 export function defaultTextTypography(): TextTypography {
-  return { fontId: "system", fontWeight: 400, italic: false, underline: false, sizeScale: 1 };
+  return { fontId: "system", fontWeight: 400, italic: false, underline: false, outline: false, sizeScale: 1 };
 }
 
 export function clampTypographySizeScale(scale: number | undefined): number {
@@ -183,22 +185,24 @@ function drawStraightAtAnchor(
   ctx.textBaseline = "alphabetic";
 
   /**
-   * After DMC quantization on a 200-stitch grid a flat fill blends into similar fur/background colors and the
-   * title can disappear. A thin contrasting outline (chosen automatically from the text color's luminance) keeps
-   * the lettering legible without looking like a drop shadow.
+   * Outline is opt-in: clean fill by default; thin contrasting stroke when the user enables it (helps
+   * titles stay legible on busy stitched backgrounds without looking like a drop shadow).
    */
+  const wantsOutline = typography.outline;
   const outlineColor = isLightTextColor(color) ? "#000000" : "#ffffff";
   const outlineWidth = Math.max(1, fontSize * 0.06);
 
   lines.forEach((line, i) => {
     const y = startY + i * lineH;
-    ctx.save();
-    ctx.lineJoin = "round";
-    ctx.miterLimit = 2;
-    ctx.lineWidth = outlineWidth;
-    ctx.strokeStyle = outlineColor;
-    ctx.strokeText(line, ax, y);
-    ctx.restore();
+    if (wantsOutline) {
+      ctx.save();
+      ctx.lineJoin = "round";
+      ctx.miterLimit = 2;
+      ctx.lineWidth = outlineWidth;
+      ctx.strokeStyle = outlineColor;
+      ctx.strokeText(line, ax, y);
+      ctx.restore();
+    }
     ctx.fillStyle = color;
     ctx.fillText(line, ax, y);
     if (typography.underline) {

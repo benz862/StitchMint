@@ -21,6 +21,7 @@ function mergeTypography(raw: unknown): TextTypography {
     fontWeight: typeof o.fontWeight === "number" && Number.isFinite(o.fontWeight) ? o.fontWeight : d.fontWeight,
     italic: typeof o.italic === "boolean" ? o.italic : d.italic,
     underline: typeof o.underline === "boolean" ? o.underline : d.underline,
+    outline: typeof o.outline === "boolean" ? o.outline : d.outline,
     sizeScale: typeof o.sizeScale === "number" && Number.isFinite(o.sizeScale) ? o.sizeScale : d.sizeScale,
   };
 }

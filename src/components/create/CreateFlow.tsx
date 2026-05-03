@@ -103,6 +103,12 @@ export function CreateFlow() {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+  /**
+   * react-easy-crop emits two callbacks for the same crop event: `area` is in percent and CAN exceed [0, 100]
+   * when the user zooms below 1 (margin-around-subject); `pixels` is clamped to the source. We persist the raw
+   * percent area so margins survive into the server pipeline (which pads out-of-bounds with white).
+   */
+  const [croppedAreaPercent, setCroppedAreaPercent] = useState<Area | null>(null);
   const [aspect, setAspect] = useState<(typeof ASPECT_PRESETS)[number]["value"]>(3 / 4);
   const [mediaSize, setMediaSize] = useState<MediaSize | null>(null);
   /** When set, Cropper remounts with this initial crop (percentages) — used when resuming from preview. */
@@ -237,6 +243,7 @@ export function CreateFlow() {
         setCrop({ x: 0, y: 0 });
         setZoom(1);
         setCroppedAreaPixels(null);
+        setCroppedAreaPercent(null);
         setMediaSize(null);
         autoCropZoomKeyRef.current = null;
 
@@ -307,6 +314,7 @@ export function CreateFlow() {
     setCrop({ x: 0, y: 0 });
     setZoom(1);
     setCroppedAreaPixels(null);
+    setCroppedAreaPercent(null);
     autoCropZoomKeyRef.current = null;
     resumeSkipWideAutoZoomRef.current = false;
     setResumeInitialCropPct(null);
@@ -328,6 +336,7 @@ export function CreateFlow() {
     setCrop({ x: 0, y: 0 });
     setZoom(1);
     setCroppedAreaPixels(null);
+    setCroppedAreaPercent(null);
     setMediaSize(null);
     autoCropZoomKeyRef.current = null;
     resumeSkipWideAutoZoomRef.current = false;
@@ -341,20 +350,27 @@ export function CreateFlow() {
     setStep(1);
   };
 
-  const onCropComplete = useCallback((_area: Area, pixels: Area) => {
+  const onCropComplete = useCallback((area: Area, pixels: Area) => {
     setCroppedAreaPixels(pixels);
+    setCroppedAreaPercent(area);
   }, []);
 
   /**
    * Returns the crop region in % of the source image. Values can fall outside [0, 100] when the user zoomed
    * below 1 to add margin around the subject — the server pads those out-of-bounds areas with white so what
-   * the user framed is what they get. We do NOT clamp here; clamping made margin-zoom collapse to "fill frame".
+   * the user framed is what they get. We use the percent `area` directly (not the pixel rect, which
+   * react-easy-crop clamps to the source bounds and which would silently strip margins).
    */
   const percentCrop = useCallback((): CropPercent => {
-    if (!mediaSize?.naturalWidth || !mediaSize.naturalHeight) {
-      return { x: 0, y: 0, width: 100, height: 100 };
+    if (croppedAreaPercent) {
+      return {
+        x: croppedAreaPercent.x,
+        y: croppedAreaPercent.y,
+        width: croppedAreaPercent.width,
+        height: croppedAreaPercent.height,
+      };
     }
-    if (!croppedAreaPixels) {
+    if (!mediaSize?.naturalWidth || !mediaSize.naturalHeight || !croppedAreaPixels) {
       return { x: 0, y: 0, width: 100, height: 100 };
     }
     const nw = mediaSize.naturalWidth;
@@ -365,7 +381,7 @@ export function CreateFlow() {
       width: (croppedAreaPixels.width / nw) * 100,
       height: (croppedAreaPixels.height / nh) * 100,
     };
-  }, [croppedAreaPixels, mediaSize]);
+  }, [croppedAreaPercent, croppedAreaPixels, mediaSize]);
 
   const pickTextColorFromScreen = async () => {
     type EyeCtor = new () => { open: () => Promise<{ sRGBHex: string }> };
@@ -549,6 +565,7 @@ export function CreateFlow() {
                     setCrop({ x: 0, y: 0 });
                     setZoom(1);
                     setCroppedAreaPixels(null);
+                    setCroppedAreaPercent(null);
                     autoCropZoomKeyRef.current = null;
                     setResumeInitialCropPct(null);
                     setCropperBootId((k) => k + 1);
@@ -756,7 +773,19 @@ export function CreateFlow() {
                       />
                       Underline
                     </label>
+                    <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+                      <input
+                        type="checkbox"
+                        checked={textTypography.outline}
+                        onChange={(e) => setTextTypography((t) => ({ ...t, outline: e.target.checked }))}
+                        className="rounded border-line accent-ink"
+                      />
+                      Outline
+                    </label>
                   </div>
+                  <p className="mt-1 text-xs text-muted">
+                    Outline adds a thin contrasting edge — useful when your text sits over a busy or similar-colored area.
+                  </p>
                 </div>
                 <div className="sm:col-span-2">
                   <p className="text-sm text-muted">Color</p>
