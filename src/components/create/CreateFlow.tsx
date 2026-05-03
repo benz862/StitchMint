@@ -50,56 +50,6 @@ function hexForColorInput(c: string) {
   return "#ffffff";
 }
 
-/** Survives remounts: after text+composite upload, server must use 100% crop on that file. */
-const FULL_FRAME_ORIGINAL_PREFIX = "stitchmint:origFullFrame:";
-
-function fullFrameOriginalKey(patternId: string) {
-  return `${FULL_FRAME_ORIGINAL_PREFIX}${patternId}`;
-}
-
-function readFullFrameOriginal(patternId: string | null): boolean {
-  if (typeof window === "undefined" || !patternId) return false;
-  try {
-    return sessionStorage.getItem(fullFrameOriginalKey(patternId)) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeFullFrameOriginal(patternId: string) {
-  try {
-    sessionStorage.setItem(fullFrameOriginalKey(patternId), "1");
-  } catch {
-    /* private mode / quota */
-  }
-}
-
-function clearFullFrameOriginalMarkers() {
-  if (typeof window === "undefined") return;
-  try {
-    const keys: string[] = [];
-    for (let i = 0; i < sessionStorage.length; i++) {
-      const k = sessionStorage.key(i);
-      if (k?.startsWith(FULL_FRAME_ORIGINAL_PREFIX)) keys.push(k);
-    }
-    for (const k of keys) sessionStorage.removeItem(k);
-  } catch {
-    /* ignore */
-  }
-}
-
-/** Stored crop from last preview build — if full frame, the uploaded original is already the final composite. */
-function cropIsNearlyFullFrame(c: unknown): boolean {
-  if (!c || typeof c !== "object") return false;
-  const o = c as Record<string, unknown>;
-  const x = Number(o.x);
-  const y = Number(o.y);
-  const w = Number(o.width);
-  const h = Number(o.height);
-  if (![x, y, w, h].every((n) => Number.isFinite(n))) return false;
-  return x <= 0.51 && y <= 0.51 && w >= 99.49 && h >= 99.49;
-}
-
 export function CreateFlow() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -126,13 +76,6 @@ export function CreateFlow() {
   const cropWrapRef = useRef<HTMLDivElement>(null);
   const textAnchorRef = useRef({ x: 50, y: 82 });
   const textDragRef = useRef<{ id: number; ox: number; oy: number; sx: number; sy: number } | null>(null);
-  /**
-   * After we upload the crop+text bitmap, storage holds the final pixels. `react-easy-crop` then fires
-   * `onCropComplete` for the *new* image using crop % that still matched the *original* photo — PATCH would
-   * extract the wrong rectangle (e.g. name lands on the dog). When true, we always send 100% crop and
-   * ignore stray `onCropComplete` pixel updates for that image.
-   */
-  const patternCropIsEntireUploadRef = useRef(false);
 
   useEffect(() => {
     textAnchorRef.current = { x: textAnchorX, y: textAnchorY };
@@ -242,18 +185,6 @@ export function CreateFlow() {
         setCroppedAreaPixels(null);
         setMediaSize(null);
 
-        if (cropIsNearlyFullFrame(row.crop)) {
-          patternCropIsEntireUploadRef.current = true;
-          writeFullFrameOriginal(rid);
-        } else {
-          patternCropIsEntireUploadRef.current = false;
-          try {
-            sessionStorage.removeItem(fullFrameOriginalKey(rid));
-          } catch {
-            /* ignore */
-          }
-        }
-
         const tier = getPricingTierIdFromPatternRow({
           pricing_tier: row.pricing_tier as string | null | undefined,
           difficulty_mode: row.difficulty_mode as string | null | undefined,
@@ -297,12 +228,10 @@ export function CreateFlow() {
   const onSelectFile = (f: File | null) => {
     setError(null);
     if (!f) return;
-    clearFullFrameOriginalMarkers();
     setPatternId(null);
     setFile(f);
     if (imageUrl) URL.revokeObjectURL(imageUrl);
     setImageUrl(URL.createObjectURL(f));
-    patternCropIsEntireUploadRef.current = false;
     setCrop({ x: 0, y: 0 });
     setZoom(1);
     setCroppedAreaPixels(null);
@@ -314,19 +243,11 @@ export function CreateFlow() {
     setStep(2);
   };
 
-  const onCropComplete = useCallback(
-    (_area: Area, pixels: Area) => {
-      if (patternCropIsEntireUploadRef.current) return;
-      if (readFullFrameOriginal(patternId)) return;
-      setCroppedAreaPixels(pixels);
-    },
-    [patternId],
-  );
+  const onCropComplete = useCallback((_area: Area, pixels: Area) => {
+    setCroppedAreaPixels(pixels);
+  }, []);
 
   const percentCrop = useCallback((): CropPercent => {
-    if (patternCropIsEntireUploadRef.current || readFullFrameOriginal(patternId)) {
-      return { x: 0, y: 0, width: 100, height: 100 };
-    }
     if (!mediaSize?.naturalWidth || !mediaSize.naturalHeight) {
       return { x: 0, y: 0, width: 100, height: 100 };
     }
@@ -341,7 +262,7 @@ export function CreateFlow() {
       width: clampPercent((croppedAreaPixels.width / nw) * 100),
       height: clampPercent((croppedAreaPixels.height / nh) * 100),
     };
-  }, [croppedAreaPixels, mediaSize, patternId]);
+  }, [croppedAreaPixels, mediaSize]);
 
   const pickTextColorFromScreen = async () => {
     type EyeCtor = new () => { open: () => Promise<{ sRGBHex: string }> };
@@ -403,8 +324,6 @@ export function CreateFlow() {
         const prevUrl = imageUrl;
         const baseName = file.name.replace(/\.[^.]+$/i, "") || "photo";
         afterTextUpload = () => {
-          patternCropIsEntireUploadRef.current = true;
-          writeFullFrameOriginal(draftId);
           const nextUrl = URL.createObjectURL(webpBlob);
           if (prevUrl) URL.revokeObjectURL(prevUrl);
           setImageUrl(nextUrl);

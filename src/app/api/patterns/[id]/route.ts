@@ -13,7 +13,6 @@ import type { CropPercent } from "@/lib/pattern-engine";
 import { getPricingTierById, inferPricingTierFromEngine, normalizePricingTierId } from "@/config/pricing";
 import { STORAGE_BUCKETS } from "@/lib/buckets";
 import { checkoutSummaryForPatternRow } from "@/lib/pricing-checkout";
-import { parseOverlayDraftForServer } from "@/lib/overlay-draft";
 import { difficultyLabel } from "@/lib/stitchability";
 
 export const runtime = "nodejs";
@@ -162,18 +161,9 @@ async function handlePatch(request: Request, ctx: { params: Promise<{ id: string
     return NextResponse.json({ error: "Invalid fabric count" }, { status: 400 });
   }
 
-  /**
-   * When `overlay_draft` is set, `original_image_url` is always the final crop rectangle (no extra inset).
-   * The client may still send a stale or mismatched `crop` (e.g. from an earlier image size), which would make
-   * Sharp `extract` slice the wrong region and drop the top (whitespace + title). Force full-frame extract.
-   */
-  const overlaySpec = parseOverlayDraftForServer(row.overlay_draft);
-  const cropForPattern: CropPercent =
-    overlaySpec !== null ? { x: 0, y: 0, width: 100, height: 100 } : crop;
-
   const settings: PatternSettings = {
     title,
-    crop: cropForPattern,
+    crop,
     stitchWidth: Number(stitchWidth),
     detailLevel: detailLevel as DetailLevelId,
     fabricCount: Number(fabricCount),
