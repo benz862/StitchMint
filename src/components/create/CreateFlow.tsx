@@ -109,6 +109,12 @@ export function CreateFlow() {
    * percent area so margins survive into the server pipeline (which pads out-of-bounds with white).
    */
   const [croppedAreaPercent, setCroppedAreaPercent] = useState<Area | null>(null);
+  /**
+   * True once the user has actually dragged or zoomed in the cropper. Until then we ignore the cropper's
+   * emitted crop (which often comes back top-aligned even with the requested aspect, chopping feet/heads off
+   * subjects) and use a deterministic centered "cover" crop computed against the photo's natural dimensions.
+   */
+  const [userTouchedCrop, setUserTouchedCrop] = useState(false);
   const [aspect, setAspect] = useState<(typeof ASPECT_PRESETS)[number]["value"]>(3 / 4);
   const [mediaSize, setMediaSize] = useState<MediaSize | null>(null);
   /**
@@ -260,6 +266,8 @@ export function CreateFlow() {
             ? { x: savedCrop.x, y: savedCrop.y, width: savedCrop.width, height: savedCrop.height }
             : null,
         );
+        /** A resumed draft has a saved crop the user already approved — treat it as "user-touched". */
+        setUserTouchedCrop(!!savedCrop);
         setMediaSize(null);
         autoCropZoomKeyRef.current = null;
 
@@ -358,6 +366,7 @@ export function CreateFlow() {
     setZoom(1);
     setCroppedAreaPixels(null);
     setCroppedAreaPercent(null);
+    setUserTouchedCrop(false);
     autoCropZoomKeyRef.current = null;
     resumeSkipWideAutoZoomRef.current = false;
     setResumeInitialCropPct(null);
@@ -380,6 +389,7 @@ export function CreateFlow() {
     setZoom(1);
     setCroppedAreaPixels(null);
     setCroppedAreaPercent(null);
+    setUserTouchedCrop(false);
     setMediaSize(null);
     autoCropZoomKeyRef.current = null;
     resumeSkipWideAutoZoomRef.current = false;
@@ -438,45 +448,48 @@ export function CreateFlow() {
   );
 
   /**
-   * Returns the crop region in % of the source image. Values can fall outside [0, 100] when the user zoomed
-   * below 1 to add margin around the subject — the server pads those out-of-bounds areas with white so what
-   * the user framed is what they get. Order of preference:
-   *   1. Cropper's percent area (if its ratio actually matches the selected aspect — protects against the
-   *      "first emit is the whole image" race in react-easy-crop).
-   *   2. Cropper's pixel rect normalized to %.
-   *   3. Deterministic centered cover crop computed from the image's natural dimensions.
+   * Returns the crop region in % of the source image. Order of preference:
+   *   1. If the user has actually dragged/zoomed the cropper (or resumed a saved framing), trust whatever the
+   *      cropper reports — its percent area first (preserves zoom-out margins outside [0, 100]), then its
+   *      pixel rect normalized to %. Each is sanity-checked against the selected aspect.
+   *   2. Otherwise (fresh upload, no interaction yet) compute a deterministic centered cover crop from the
+   *      photo's natural dimensions. This avoids the cropper's habit of emitting a top-aligned default that
+   *      chops off feet/heads on tall subjects.
+   *   3. Final fallback {0,0,100,100} only when no media has loaded at all.
    */
   const percentCrop = useCallback((): CropPercent => {
     const naturalW = mediaSize?.naturalWidth ?? imageNaturalSize?.width ?? 0;
     const naturalH = mediaSize?.naturalHeight ?? imageNaturalSize?.height ?? 0;
 
-    if (croppedAreaPercent) {
-      const candidate: CropPercent = {
-        x: croppedAreaPercent.x,
-        y: croppedAreaPercent.y,
-        width: croppedAreaPercent.width,
-        height: croppedAreaPercent.height,
-      };
-      if (naturalW > 0 && naturalH > 0) {
-        if (cropPercentMatchesAspect(candidate, naturalW, naturalH, aspect)) {
+    if (userTouchedCrop) {
+      if (croppedAreaPercent) {
+        const candidate: CropPercent = {
+          x: croppedAreaPercent.x,
+          y: croppedAreaPercent.y,
+          width: croppedAreaPercent.width,
+          height: croppedAreaPercent.height,
+        };
+        if (naturalW > 0 && naturalH > 0) {
+          if (cropPercentMatchesAspect(candidate, naturalW, naturalH, aspect)) {
+            return candidate;
+          }
+        } else {
           return candidate;
         }
-      } else {
-        return candidate;
       }
-    }
 
-    if (mediaSize?.naturalWidth && mediaSize?.naturalHeight && croppedAreaPixels) {
-      const nw = mediaSize.naturalWidth;
-      const nh = mediaSize.naturalHeight;
-      const candidate: CropPercent = {
-        x: (croppedAreaPixels.x / nw) * 100,
-        y: (croppedAreaPixels.y / nh) * 100,
-        width: (croppedAreaPixels.width / nw) * 100,
-        height: (croppedAreaPixels.height / nh) * 100,
-      };
-      if (cropPercentMatchesAspect(candidate, nw, nh, aspect)) {
-        return candidate;
+      if (mediaSize?.naturalWidth && mediaSize?.naturalHeight && croppedAreaPixels) {
+        const nw = mediaSize.naturalWidth;
+        const nh = mediaSize.naturalHeight;
+        const candidate: CropPercent = {
+          x: (croppedAreaPixels.x / nw) * 100,
+          y: (croppedAreaPixels.y / nh) * 100,
+          width: (croppedAreaPixels.width / nw) * 100,
+          height: (croppedAreaPixels.height / nh) * 100,
+        };
+        if (cropPercentMatchesAspect(candidate, nw, nh, aspect)) {
+          return candidate;
+        }
       }
     }
 
@@ -485,6 +498,7 @@ export function CreateFlow() {
     }
     return { x: 0, y: 0, width: 100, height: 100 };
   }, [
+    userTouchedCrop,
     croppedAreaPercent,
     croppedAreaPixels,
     mediaSize,
@@ -596,6 +610,7 @@ export function CreateFlow() {
      */
     if (typeof window !== "undefined") {
       console.log("[generatePreview] PATCH crop", cropPct, {
+        userTouchedCrop,
         hasPercent: !!croppedAreaPercent,
         hasPixels: !!croppedAreaPixels,
         hasMediaSize: !!mediaSize,
@@ -691,6 +706,7 @@ export function CreateFlow() {
                     setZoom(1);
                     setCroppedAreaPixels(null);
                     setCroppedAreaPercent(null);
+                    setUserTouchedCrop(false);
                     autoCropZoomKeyRef.current = null;
                     setResumeInitialCropPct(null);
                     setCropperBootId((k) => k + 1);
@@ -716,8 +732,14 @@ export function CreateFlow() {
                 maxZoom={CROP_MAX_ZOOM}
                 aspect={aspect}
                 initialCroppedAreaPercentages={resumeInitialCropPct ?? undefined}
-                onCropChange={setCrop}
-                onZoomChange={setZoom}
+                onCropChange={(c) => {
+                  setCrop(c);
+                  setUserTouchedCrop(true);
+                }}
+                onZoomChange={(z) => {
+                  setZoom(z);
+                  setUserTouchedCrop(true);
+                }}
                 onCropComplete={onCropComplete}
                 onMediaLoaded={setMediaSize}
                 showGrid={false}
