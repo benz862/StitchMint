@@ -156,7 +156,12 @@ function addDecoratedLetterPage(doc: PdfDoc) {
   decorateInnerLetterPage(doc);
 }
 
-function drawCover(doc: PdfDoc, meta: PatternPdfMeta, opts: { original?: Buffer; preview: Buffer }) {
+function drawCover(
+  doc: PdfDoc,
+  meta: PatternPdfMeta,
+  opts: { original?: Buffer; preview: Buffer },
+  chartVariant: ChartVariant,
+) {
   const tw = contentTextWidth(doc);
   const { widthIn, heightIn } = finishedSizeInches(meta.stitchWidth, meta.stitchHeight, meta.fabricCount);
   const cut = recommendedFabricCut(widthIn, heightIn);
@@ -202,6 +207,14 @@ function drawCover(doc: PdfDoc, meta: PatternPdfMeta, opts: { original?: Buffer;
   doc.moveDown(0.5);
   doc.fontSize(11).fillColor("#2c2416");
   doc.text(`Grid: ${meta.stitchWidth} × ${meta.stitchHeight} stitches`, { width: tw, align: "left" });
+  const slice = chartVariant === "large" ? CHART_PAGE_LARGE : CHART_PAGE_REGULAR;
+  const printLabel = chartVariant === "large" ? "Large-print chart" : "Regular chart";
+  doc.fontSize(9).fillColor("#5c5346").text(
+    `${printLabel}: each printed sheet shows up to ${slice.cols} × ${slice.rows} stitches from this same grid (${slice.overlap}-stitch overlap between sheets). Fewer stitches per sheet means larger symbols and more chart pages — not a different pattern size.`,
+    { width: tw, align: "left" },
+  );
+  doc.moveDown(0.35);
+  doc.fontSize(11).fillColor("#2c2416");
   doc.text(`Fabric: ${meta.fabricCount}-count Aida`, { width: tw, align: "left" });
   doc.text(
     `Finished size: ${widthIn.toFixed(2)} in × ${heightIn.toFixed(2)} in (${inchesToCm(widthIn).toFixed(1)} × ${inchesToCm(heightIn).toFixed(1)} cm)`,
@@ -390,7 +403,7 @@ export async function buildPatternPdf(params: {
     params.coverBackground !== undefined ? params.coverBackground : await loadPatternCoverBackground();
 
   decorateCoverLetterPage(doc, coverBg);
-  drawCover(doc, params.meta, { original: params.originalImage, preview: params.previewImage });
+  drawCover(doc, params.meta, { original: params.originalImage, preview: params.previewImage }, params.variant);
   drawInstructions(doc);
   drawLegend(doc, params.palette);
   drawChartPages(doc, params.grid, params.palette, params.variant);
