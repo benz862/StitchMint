@@ -65,6 +65,8 @@ export function CropTextLiveOverlay({
     return (
       <>
         <svg
+          xmlns="http://www.w3.org/2000/svg"
+          xmlnsXlink="http://www.w3.org/1999/xlink"
           className="pointer-events-none absolute inset-0 z-[25] h-full w-full"
           viewBox="0 0 100 100"
           preserveAspectRatio="none"
@@ -78,17 +80,19 @@ export function CropTextLiveOverlay({
             y={0}
             textAnchor="middle"
             dominantBaseline="middle"
-            fontFamily={stack}
-            fontWeight={typography.fontWeight}
-            fontStyle={typography.italic ? "italic" : "normal"}
-            textDecoration={typography.underline ? "underline" : "none"}
             fill={safeColor}
             stroke="rgba(0,0,0,0.35)"
             strokeWidth={0.12 + 0.06 * Math.min(sizeS, 1.8)}
             paintOrder="stroke fill"
             fontSize={Math.max(2.6, 4.2 * sizeS)}
+            textDecoration={typography.underline ? "underline" : "none"}
+            style={{
+              fontFamily: stack,
+              fontWeight: typography.fontWeight,
+              fontStyle: typography.italic ? "italic" : "normal",
+            }}
           >
-            <textPath href={`#${pathId}`} startOffset="50%">
+            <textPath href={`#${pathId}`} xlinkHref={`#${pathId}`} startOffset="50%">
               {lines[0]}
             </textPath>
           </text>
