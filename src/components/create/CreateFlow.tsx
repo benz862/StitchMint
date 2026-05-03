@@ -292,10 +292,15 @@ export function CreateFlow() {
     return Math.max(40, Math.round(stitchWidth / aspect));
   }, [aspect, stitchWidth]);
 
+  /**
+   * Photo upload handler. When `patternId` is already set (user came in via Edit pattern / ?resume=) we keep
+   * the same pattern row and just swap its photo, so Build preview rebuilds the SAME preview URL the user came
+   * from. Previously we cleared `patternId` and silently started a brand-new draft, which left the user looking
+   * at the old preview while the new build sat at a different /preview/[id] they never opened.
+   */
   const onSelectFile = (f: File | null) => {
     setError(null);
     if (!f) return;
-    setPatternId(null);
     setFile(f);
     if (imageUrl) URL.revokeObjectURL(imageUrl);
     setImageUrl(URL.createObjectURL(f));
@@ -312,6 +317,28 @@ export function CreateFlow() {
     setTextTypography(defaultTextTypography());
     setTextColor("#ffffff");
     setStep(2);
+  };
+
+  const startFreshFromUpload = () => {
+    setError(null);
+    setPatternId(null);
+    setFile(null);
+    if (imageUrl) URL.revokeObjectURL(imageUrl);
+    setImageUrl(null);
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setCroppedAreaPixels(null);
+    setMediaSize(null);
+    autoCropZoomKeyRef.current = null;
+    resumeSkipWideAutoZoomRef.current = false;
+    setResumeInitialCropPct(null);
+    setCropperBootId((k) => k + 1);
+    setOverlayText("");
+    setTextAnchorX(50);
+    setTextAnchorY(82);
+    setTextTypography(defaultTextTypography());
+    setTextColor("#ffffff");
+    setStep(1);
   };
 
   const onCropComplete = useCallback((_area: Area, pixels: Area) => {
@@ -477,6 +504,21 @@ export function CreateFlow() {
           <p className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">{error}</p>
         ) : null}
 
+        {patternId ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-cream/70 px-4 py-3 text-sm">
+            <span className="text-ink">
+              Editing your existing draft. <span className="text-muted">Build preview will rebuild the same pattern.</span>
+            </span>
+            <button
+              type="button"
+              onClick={startFreshFromUpload}
+              className="rounded-full border border-line bg-card px-3 py-1 text-xs font-medium text-ink hover:bg-cream-deep/80"
+            >
+              Start a brand-new pattern instead
+            </button>
+          </div>
+        ) : null}
+
         {step === 1 && (
           <div className="space-y-6">
             <p className="text-muted">
@@ -489,7 +531,7 @@ export function CreateFlow() {
                 className="hidden"
                 onChange={(e) => onSelectFile(e.target.files?.[0] ?? null)}
               />
-              <span className="font-medium text-ink">Tap to upload</span>
+              <span className="font-medium text-ink">{patternId ? "Tap to replace photo" : "Tap to upload"}</span>
               <span className="mt-2 text-sm text-muted">JPG, PNG, or WEBP · up to 20 MB</span>
             </label>
           </div>
