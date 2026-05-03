@@ -111,6 +111,13 @@ export function CreateFlow() {
   const [croppedAreaPercent, setCroppedAreaPercent] = useState<Area | null>(null);
   const [aspect, setAspect] = useState<(typeof ASPECT_PRESETS)[number]["value"]>(3 / 4);
   const [mediaSize, setMediaSize] = useState<MediaSize | null>(null);
+  /**
+   * react-easy-crop's onMediaLoaded callback can fail to fire after HMR or in some Turbopack reloads, leaving
+   * `mediaSize` null and the percentCrop() fallback unable to compute a sane default. We probe the imageUrl
+   * ourselves with a vanilla Image() load so the natural dimensions are always available client-side, even if
+   * the cropper never calls back.
+   */
+  const [imageNaturalSize, setImageNaturalSize] = useState<{ width: number; height: number } | null>(null);
   /** When set, Cropper remounts with this initial crop (percentages) — used when resuming from preview. */
   const [resumeInitialCropPct, setResumeInitialCropPct] = useState<Area | null>(null);
   const [cropperBootId, setCropperBootId] = useState(0);
@@ -288,6 +295,33 @@ export function CreateFlow() {
   }, [searchParams, router]);
 
   /**
+   * Belt-and-braces: probe the imageUrl directly with a vanilla Image() so we always know the photo's natural
+   * width/height client-side, independent of whether react-easy-crop's onMediaLoaded callback fires. This
+   * powers the deterministic crop fallback inside percentCrop() so a click-through Build always carries a
+   * meaningful framing instead of {0,0,100,100}.
+   */
+  useEffect(() => {
+    if (!imageUrl) {
+      setImageNaturalSize(null);
+      return;
+    }
+    let cancelled = false;
+    const img = new window.Image();
+    img.onload = () => {
+      if (cancelled) return;
+      setImageNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.onerror = () => {
+      if (cancelled) return;
+      setImageNaturalSize(null);
+    };
+    img.src = imageUrl;
+    return () => {
+      cancelled = true;
+    };
+  }, [imageUrl]);
+
+  /**
    * Stop fighting the user: we used to auto-zoom-out wide photos to "show more" on portrait frames. That dropped
    * the cropper below 1 and the resulting crop region extended outside the image, which the server later padded —
    * net effect was the subject getting scaled to fill the frame on rebuild. We now leave the zoom at 1 (cover)
@@ -413,8 +447,11 @@ export function CreateFlow() {
     if (mediaSize?.naturalWidth && mediaSize?.naturalHeight) {
       return computeDefaultCropPct(mediaSize.naturalWidth, mediaSize.naturalHeight, aspect);
     }
+    if (imageNaturalSize) {
+      return computeDefaultCropPct(imageNaturalSize.width, imageNaturalSize.height, aspect);
+    }
     return { x: 0, y: 0, width: 100, height: 100 };
-  }, [croppedAreaPercent, croppedAreaPixels, mediaSize, aspect, computeDefaultCropPct]);
+  }, [croppedAreaPercent, croppedAreaPixels, mediaSize, imageNaturalSize, aspect, computeDefaultCropPct]);
 
   const pickTextColorFromScreen = async () => {
     type EyeCtor = new () => { open: () => Promise<{ sRGBHex: string }> };
@@ -511,6 +548,20 @@ export function CreateFlow() {
   const generatePreview = async () => {
     if (!patternId) return;
     const cropPct = percentCrop();
+    /**
+     * One-line diagnostic so we can verify in the browser console which fallback path produced the crop. If
+     * this prints {x:0, y:0, width:100, height:100} the deterministic fallbacks didn't fire and we know the
+     * imageUrl probe never resolved either.
+     */
+    if (typeof window !== "undefined") {
+      console.log("[generatePreview] PATCH crop", cropPct, {
+        hasPercent: !!croppedAreaPercent,
+        hasPixels: !!croppedAreaPixels,
+        hasMediaSize: !!mediaSize,
+        hasImageNatural: !!imageNaturalSize,
+        aspect,
+      });
+    }
     setBusy(true);
     setError(null);
     try {
