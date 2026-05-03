@@ -2,11 +2,16 @@ import type { Area } from "react-easy-crop";
 
 export type TextCurve = "none" | "arcUp" | "arcDown";
 
+export const FONT_SIZE_SCALE_MIN = 0.35;
+export const FONT_SIZE_SCALE_MAX = 2.5;
+
 export type TextTypography = {
   fontId: string;
   fontWeight: number;
   italic: boolean;
   underline: boolean;
+  /** Multiplier on the auto-fit size (preview + export). */
+  sizeScale: number;
 };
 
 export type TextOverlaySpec = {
@@ -44,7 +49,23 @@ export function buildFontCss(typography: TextTypography, fontSize: number): stri
 }
 
 export function defaultTextTypography(): TextTypography {
-  return { fontId: "system", fontWeight: 400, italic: false, underline: false };
+  return { fontId: "system", fontWeight: 400, italic: false, underline: false, sizeScale: 1 };
+}
+
+export function clampTypographySizeScale(scale: number | undefined): number {
+  const s = typeof scale === "number" && Number.isFinite(scale) ? scale : 1;
+  return Math.min(FONT_SIZE_SCALE_MAX, Math.max(FONT_SIZE_SCALE_MIN, s));
+}
+
+function effectiveSizeScale(t: TextTypography): number {
+  return clampTypographySizeScale(t.sizeScale);
+}
+
+/** Apply user size scale and clamp so text stays drawable. */
+function scaledFontSize(basePx: number, canvasShortEdge: number, typography: TextTypography): number {
+  const scaled = Math.round(basePx * effectiveSizeScale(typography));
+  const cap = Math.max(48, Math.min(320, Math.round(canvasShortEdge * 0.62)));
+  return Math.max(8, Math.min(cap, scaled));
 }
 
 type Vec = { x: number; y: number };
@@ -133,7 +154,8 @@ function drawStraightAtAnchor(
   const padX = cw * 0.05;
   const maxW = Math.min(cw - padX * 2, Math.min(ax, cw - ax) * 2 * 0.95 + padX);
   const maxBand = ch * 0.4;
-  const fontSize = fitFontSize(ctx, lines, typography, maxW, maxBand);
+  const baseFit = fitFontSize(ctx, lines, typography, maxW, maxBand);
+  const fontSize = scaledFontSize(baseFit, Math.min(cw, ch), typography);
   ctx.font = buildFontCss(typography, fontSize);
   const lineH = fontSize * 1.28;
   const totalH = lines.length * lineH;
@@ -270,7 +292,8 @@ function drawOverlay(ctx: CanvasRenderingContext2D, cw: number, ch: number, spec
       if (tw <= arcLen * 0.88) break;
       fs -= 2;
     }
-    drawCurvedLine(ctx, single, p0, p1, p2, spec.typography, spec.color, fs);
+    const fsScaled = scaledFontSize(fs, Math.min(cw, ch), spec.typography);
+    drawCurvedLine(ctx, single, p0, p1, p2, spec.typography, spec.color, fsScaled);
     return;
   }
 

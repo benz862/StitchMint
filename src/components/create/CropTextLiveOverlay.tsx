@@ -2,7 +2,7 @@
 
 import { useId, useMemo } from "react";
 import type { TextCurve, TextTypography } from "@/lib/canvas-crop-text";
-import { fontStackFromId } from "@/lib/canvas-crop-text";
+import { clampTypographySizeScale, fontStackFromId } from "@/lib/canvas-crop-text";
 
 function linesFromText(text: string) {
   return text
@@ -56,6 +56,7 @@ export function CropTextLiveOverlay({
   const singleLine = lines.length === 1;
   const curved = singleLine && curve !== "none";
   const stack = fontStackFromId(typography.fontId);
+  const sizeS = clampTypographySizeScale(typography.sizeScale);
   const t = color.trim();
   const safeColor =
     /^#[0-9a-f]{6}$/i.test(t) ? t : /^#[0-9a-f]{3}$/i.test(t) ? `#${t[1]}${t[1]}${t[2]}${t[2]}${t[3]}${t[3]}` : "#ffffff";
@@ -81,9 +82,9 @@ export function CropTextLiveOverlay({
             textDecoration={typography.underline ? "underline" : "none"}
             fill={safeColor}
             stroke="rgba(0,0,0,0.35)"
-            strokeWidth="0.14"
+            strokeWidth={0.12 + 0.06 * Math.min(sizeS, 1.8)}
             paintOrder="stroke fill"
-            fontSize="3.1"
+            fontSize={3.1 * sizeS}
           >
             <textPath href={`#${pathId}`} startOffset="50%" textAnchor="middle">
               {lines[0]}
@@ -126,7 +127,7 @@ export function CropTextLiveOverlay({
         textDecoration: typography.underline ? "underline" : "none",
         color: safeColor,
         textShadow: "0 0 2px rgba(0,0,0,0.95), 0 1px 4px rgba(0,0,0,0.85)",
-        fontSize: "clamp(11px, 2.9vmin, 26px)",
+        fontSize: `clamp(${11 * sizeS}px, ${2.9 * sizeS}vmin, ${28 * sizeS}px)`,
         lineHeight: 1.28,
         whiteSpace: "pre-wrap",
         wordBreak: "break-word",

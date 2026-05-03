@@ -8,7 +8,13 @@ import { PRICING_TIERS, type PricingTierId } from "@/config/pricing";
 import { FABRIC_COUNTS } from "@/lib/constants";
 import { STORAGE_BUCKETS } from "@/lib/buckets";
 import type { TextCurve, TextTypography } from "@/lib/canvas-crop-text";
-import { composeCroppedImageWithOverlay, defaultTextTypography, OVERLAY_FONT_OPTIONS } from "@/lib/canvas-crop-text";
+import {
+  composeCroppedImageWithOverlay,
+  defaultTextTypography,
+  FONT_SIZE_SCALE_MAX,
+  FONT_SIZE_SCALE_MIN,
+  OVERLAY_FONT_OPTIONS,
+} from "@/lib/canvas-crop-text";
 import { CropTextLiveOverlay } from "@/components/create/CropTextLiveOverlay";
 import { encodeCanvasToWebpBlob, encodeImageFileToWebpBlob, getEncodedOutputSize } from "@/lib/encode-original-client";
 import { finishedSizeInches, inchesToCm } from "@/lib/measurements";
@@ -518,6 +524,34 @@ export function CreateFlow() {
                       </option>
                     ))}
                   </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <label htmlFor="stitchmint-font-size-scale" className="text-sm text-muted">
+                    Font size — {Math.round(textTypography.sizeScale * 100)}% of auto-fit
+                  </label>
+                  <input
+                    id="stitchmint-font-size-scale"
+                    type="range"
+                    min={FONT_SIZE_SCALE_MIN}
+                    max={FONT_SIZE_SCALE_MAX}
+                    step={0.05}
+                    value={textTypography.sizeScale}
+                    onChange={(e) =>
+                      setTextTypography((t) => ({ ...t, sizeScale: Number(e.target.value) }))
+                    }
+                    className="mt-2 w-full accent-ink"
+                  />
+                  <p className="mt-1 flex flex-wrap justify-between gap-2 text-xs text-muted">
+                    <span>35% (tiny)</span>
+                    <button
+                      type="button"
+                      className="rounded-full border border-line bg-card px-2 py-0.5 text-ink hover:bg-cream-deep/80"
+                      onClick={() => setTextTypography((t) => ({ ...t, sizeScale: 1 }))}
+                    >
+                      Reset to 100%
+                    </button>
+                    <span>250% (huge)</span>
+                  </p>
                 </div>
                 <div className="sm:col-span-2">
                   <p className="text-sm text-muted">Style</p>
