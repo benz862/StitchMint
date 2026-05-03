@@ -40,6 +40,46 @@ function clampPercent(n: number) {
   return Math.max(0, Math.min(100, n));
 }
 
+function parsePatternRowCrop(row: Record<string, unknown>): CropPercent | null {
+  const c = row.crop;
+  if (!c || typeof c !== "object") return null;
+  const o = c as Record<string, unknown>;
+  if (
+    typeof o.x !== "number" ||
+    typeof o.y !== "number" ||
+    typeof o.width !== "number" ||
+    typeof o.height !== "number"
+  ) {
+    return null;
+  }
+  return {
+    x: clampPercent(o.x),
+    y: clampPercent(o.y),
+    width: Math.max(1, Math.min(100, o.width)),
+    height: Math.max(1, Math.min(100, o.height)),
+  };
+}
+
+function cropPercentToInitialArea(c: CropPercent): Area {
+  return { x: c.x, y: c.y, width: c.width, height: c.height };
+}
+
+/** Match saved pattern stitch grid to the closest create-flow aspect preset. */
+function nearestAspectPreset(stitchW: number, stitchH: number): (typeof ASPECT_PRESETS)[number]["value"] {
+  if (!Number.isFinite(stitchW) || !Number.isFinite(stitchH) || stitchW < 1 || stitchH < 1) return 3 / 4;
+  const r = stitchW / stitchH;
+  let best: (typeof ASPECT_PRESETS)[number]["value"] = ASPECT_PRESETS[0]!.value;
+  let bestScore = Infinity;
+  for (const p of ASPECT_PRESETS) {
+    const s = Math.abs(Math.log(r / p.value));
+    if (s < bestScore) {
+      bestScore = s;
+      best = p.value;
+    }
+  }
+  return best;
+}
+
 function hexForColorInput(c: string) {
   const t = c.trim();
   if (/^#[0-9a-f]{6}$/i.test(t)) return t;
@@ -56,6 +96,8 @@ export function CreateFlow() {
   const resumeHydratedRef = useRef<string | null>(null);
   /** Last `${imageUrl}|${aspect}` we applied wide-photo auto zoom for (avoid fighting user after they adjust). */
   const autoCropZoomKeyRef = useRef<string | null>(null);
+  /** After resuming from preview, skip one wide-photo auto-zoom pass so we do not fight restored crop/aspect. */
+  const resumeSkipWideAutoZoomRef = useRef(false);
   const [step, setStep] = useState<Step>(1);
   const [file, setFile] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -68,6 +110,9 @@ export function CreateFlow() {
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
   const [aspect, setAspect] = useState<(typeof ASPECT_PRESETS)[number]["value"]>(3 / 4);
   const [mediaSize, setMediaSize] = useState<MediaSize | null>(null);
+  /** When set, Cropper remounts with this initial crop (percentages) — used when resuming from preview. */
+  const [resumeInitialCropPct, setResumeInitialCropPct] = useState<Area | null>(null);
+  const [cropperBootId, setCropperBootId] = useState(0);
 
   const [overlayText, setOverlayText] = useState("");
   const [textAnchorX, setTextAnchorX] = useState(50);
@@ -182,6 +227,24 @@ export function CreateFlow() {
           setTextTypography(defaultTextTypography());
           setTextColor("#ffffff");
         }
+
+        const sw = Number(row.stitch_width);
+        const sh = Number(row.stitch_height);
+        if (Number.isFinite(sw) && Number.isFinite(sh) && sw > 0 && sh > 0) {
+          setAspect(nearestAspectPreset(sw, sh));
+        }
+
+        const savedCrop = parsePatternRowCrop(row);
+        if (overlaySpec) {
+          setResumeInitialCropPct({ x: 0, y: 0, width: 100, height: 100 });
+        } else if (savedCrop) {
+          setResumeInitialCropPct(cropPercentToInitialArea(savedCrop));
+        } else {
+          setResumeInitialCropPct(null);
+        }
+        setCropperBootId((k) => k + 1);
+        resumeSkipWideAutoZoomRef.current = true;
+
         setCrop({ x: 0, y: 0 });
         setZoom(1);
         setCroppedAreaPixels(null);
@@ -229,6 +292,11 @@ export function CreateFlow() {
     const nh = mediaSize.naturalHeight;
     if (nh < 1) return;
     const key = `${imageUrl}|${aspect}`;
+    if (resumeSkipWideAutoZoomRef.current) {
+      autoCropZoomKeyRef.current = key;
+      resumeSkipWideAutoZoomRef.current = false;
+      return;
+    }
     if (autoCropZoomKeyRef.current === key) return;
     const imgAR = nw / nh;
     if (imgAR > aspect + 0.002) {
@@ -243,8 +311,7 @@ export function CreateFlow() {
     return tier?.engine.stitchWidth ?? 120;
   }, [pricingTierId]);
   const stitchHeightGuess = useMemo(() => {
-    const ar = aspect === 1 ? 1 : aspect > 1 ? 3 / 4 : 4 / 3;
-    return Math.max(40, Math.round(stitchWidth / ar));
+    return Math.max(40, Math.round(stitchWidth / aspect));
   }, [aspect, stitchWidth]);
 
   const onSelectFile = (f: File | null) => {
@@ -258,6 +325,9 @@ export function CreateFlow() {
     setZoom(1);
     setCroppedAreaPixels(null);
     autoCropZoomKeyRef.current = null;
+    resumeSkipWideAutoZoomRef.current = false;
+    setResumeInitialCropPct(null);
+    setCropperBootId((k) => k + 1);
     setOverlayText("");
     setTextAnchorX(50);
     setTextAnchorY(82);
@@ -480,6 +550,8 @@ export function CreateFlow() {
                     setZoom(1);
                     setCroppedAreaPixels(null);
                     autoCropZoomKeyRef.current = null;
+                    setResumeInitialCropPct(null);
+                    setCropperBootId((k) => k + 1);
                   }}
                   className={`rounded-full px-4 py-2 text-sm ${
                     aspect === p.value ? "bg-ink text-cream" : "bg-cream-deep/80 text-ink hover:bg-cream-deep"
@@ -494,12 +566,14 @@ export function CreateFlow() {
               className="relative h-[320px] w-full overflow-hidden rounded-2xl bg-black/5 sm:h-[420px]"
             >
               <Cropper
+                key={`${imageUrl}-${cropperBootId}`}
                 image={imageUrl}
                 crop={crop}
                 zoom={zoom}
                 minZoom={CROP_MIN_ZOOM}
                 maxZoom={CROP_MAX_ZOOM}
                 aspect={aspect}
+                initialCroppedAreaPercentages={resumeInitialCropPct ?? undefined}
                 onCropChange={setCrop}
                 onZoomChange={setZoom}
                 onCropComplete={onCropComplete}
