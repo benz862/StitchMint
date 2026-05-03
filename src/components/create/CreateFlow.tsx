@@ -721,6 +721,7 @@ export function CreateFlow() {
             </div>
             <div
               ref={cropWrapRef}
+              onPointerDown={() => setUserTouchedCrop(true)}
               className="relative h-[320px] w-full overflow-hidden rounded-2xl bg-black/5 sm:h-[420px]"
             >
               <Cropper
@@ -767,7 +768,10 @@ export function CreateFlow() {
                 max={CROP_MAX_ZOOM}
                 step={0.01}
                 value={zoom}
-                onChange={(e) => setZoom(Number(e.target.value))}
+                onChange={(e) => {
+                  setZoom(Number(e.target.value));
+                  setUserTouchedCrop(true);
+                }}
                 className="mt-2 w-full accent-ink"
               />
             </div>
