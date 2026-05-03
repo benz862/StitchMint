@@ -732,6 +732,13 @@ export function CreateFlow() {
                 minZoom={CROP_MIN_ZOOM}
                 maxZoom={CROP_MAX_ZOOM}
                 aspect={aspect}
+                /**
+                 * restrictPosition=false: lets the user zoom below 1 (frame extends past the image edges) and
+                 * makes react-easy-crop report croppedArea values OUTSIDE [0, 100]. The server then pads those
+                 * out-of-bounds regions with white via extractRequestedCrop, so the user's "fit subject with
+                 * margins" framing round-trips intact instead of being silently clamped to the image edges.
+                 */
+                restrictPosition={false}
                 initialCroppedAreaPercentages={resumeInitialCropPct ?? undefined}
                 onCropChange={(c) => {
                   setCrop(c);
