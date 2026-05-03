@@ -84,6 +84,24 @@ export function AdminDemoTierSamples() {
     [alsoEmail, canEmail],
   );
 
+  const [testEmailMessage, setTestEmailMessage] = useState<string | null>(null);
+
+  const sendTestResend = useCallback(async () => {
+    setError(null);
+    setTestEmailMessage(null);
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/test-resend", { method: "POST" });
+      const j = (await res.json()) as { ok?: boolean; error?: string; from?: string; to?: string; id?: string | null };
+      if (!res.ok) throw new Error(j.error ?? `Request failed (${res.status})`);
+      setTestEmailMessage(`Test email sent to ${j.to ?? "you"} from ${j.from ?? "RESEND_FROM"}. Resend id: ${j.id ?? "—"}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Test send failed");
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
   const downloadWebappShowcase = useCallback(async () => {
     setError(null);
     setMessage(null);
@@ -180,6 +198,23 @@ export function AdminDemoTierSamples() {
           </button>
         </div>
       </form>
+
+      <div className="mt-8 border-t border-line pt-6">
+        <h3 className="text-sm font-medium text-ink">Resend email test</h3>
+        <p className="mt-1 max-w-xl text-xs text-muted">
+          Sends one plain message to your admin login email using <code className="rounded bg-cream px-1">RESEND_FROM</code> (or Resend
+          onboarding if unset). Use this to confirm Vercel env vars before emailing large ZIPs.
+        </p>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void sendTestResend()}
+          className="mt-3 rounded-full border border-line bg-card px-5 py-2 text-xs font-medium text-ink disabled:opacity-50"
+        >
+          {busy ? "Sending…" : "Send test email to me"}
+        </button>
+        {testEmailMessage ? <p className="mt-2 text-xs text-ink">{testEmailMessage}</p> : null}
+      </div>
 
       {error ? <p className="mt-3 text-sm text-red-800">{error}</p> : null}
       {message ? <p className="mt-3 text-sm text-ink">{message}</p> : null}
