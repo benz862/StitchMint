@@ -12,6 +12,9 @@ export const maxDuration = 300;
 /** Vercel and many hosts limit request bodies (~4.5MB); stay under with client-side shrink + this cap. */
 const MAX_BYTES = 4 * 1024 * 1024;
 
+/** Resend caps total email size (~40MB after encoding); keep raw attachment under this for reliable delivery. */
+const RESEND_ZIP_ATTACHMENT_MAX_BYTES = 28 * 1024 * 1024;
+
 function safeBaseTitle(name: string): string {
   const base = name.replace(/\.[^/.]+$/, "");
   const cleaned = base.replace(/[^\w\s-]+/g, "").trim();
@@ -107,16 +110,30 @@ export async function POST(request: Request) {
     } else {
       try {
         const resend = new Resend(key);
+        const canAttach = mega.length <= RESEND_ZIP_ATTACHMENT_MAX_BYTES;
         const { error } = await resend.emails.send({
           from,
           to: user.email,
-          subject: "StitchMint tier sample pack — download link",
-          html: `<p>Your tier sample ZIP is ready (link expires in about 15 minutes).</p><p><a href="${signedUrl}">Download StitchMint tier samples</a></p><p>If the button does not work, copy this URL into your browser:<br/><code style="word-break:break-all">${signedUrl}</code></p>`,
+          subject: canAttach ? "StitchMint tier sample pack (ZIP attached)" : "StitchMint tier sample pack — download link",
+          html: canAttach
+            ? "<p>Your tier sample ZIP is <strong>attached</strong> to this email.</p><p>You can also download again from the admin page while signed in.</p>"
+            : `<p>This pack is about ${Math.round(mega.length / (1024 * 1024))} MB, which is too large to attach reliably. Use this link instead (expires in about 15 minutes):</p><p><a href="${signedUrl}">Download StitchMint tier samples</a></p><p><code style="word-break:break-all">${signedUrl}</code></p>`,
+          ...(canAttach
+            ? {
+                attachments: [
+                  {
+                    filename,
+                    content: mega,
+                    contentType: "application/zip",
+                  },
+                ],
+              }
+            : {}),
         });
         if (error) {
           emailStatus = `failed:${error.message}`;
         } else {
-          emailStatus = "sent";
+          emailStatus = canAttach ? "sent-attached" : "sent-link-only";
         }
       } catch (err) {
         emailStatus = `failed:${err instanceof Error ? err.message : "send error"}`;

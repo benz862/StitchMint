@@ -111,7 +111,10 @@ export function AdminDemoTierSamples() {
 
         let msg = "Your sample pack download has started.";
         if (alsoEmail && canEmail) {
-          if (emailStatus === "sent") msg += " A copy was emailed to you.";
+          if (emailStatus === "sent-attached" || emailStatus === "sent")
+            msg += " A copy was emailed to you with the ZIP attached.";
+          else if (emailStatus === "sent-link-only")
+            msg += " A copy was emailed with a download link (ZIP was too large to attach).";
           else if (emailStatus === "missing-resend")
             msg += " Email was not sent (set RESEND_API_KEY on the server).";
           else if (emailStatus?.startsWith("failed:")) msg += ` Email failed: ${emailStatus.slice(7)}`;
@@ -246,7 +249,7 @@ export function AdminDemoTierSamples() {
         <h3 className="text-sm font-medium text-ink">Resend email test</h3>
         <p className="mt-1 max-w-xl text-xs text-muted">
           Sends one plain message to your admin login email using <code className="rounded bg-cream px-1">RESEND_FROM</code> (or Resend
-          onboarding if unset). Use this to confirm Vercel env vars before using “Also email me a copy” (that flow emails a download link, not an attachment).
+          onboarding if unset). Use this to confirm Vercel env vars before using “Also email me a copy” (ZIP is attached when under Resend size limits; otherwise a signed download link is sent).
         </p>
         <button
           type="button"
