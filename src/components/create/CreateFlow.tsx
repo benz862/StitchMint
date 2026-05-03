@@ -51,12 +51,8 @@ function parsePatternRowCrop(row: Record<string, unknown>): CropPercent | null {
   ) {
     return null;
   }
-  return {
-    x: clampPercent(o.x),
-    y: clampPercent(o.y),
-    width: Math.max(1, Math.min(100, o.width)),
-    height: Math.max(1, Math.min(100, o.height)),
-  };
+  /** Values can be outside [0, 100] when the user zoomed out for margin; we preserve them so resume restores the same framing. */
+  return { x: o.x, y: o.y, width: Math.max(0.5, o.width), height: Math.max(0.5, o.height) };
 }
 
 function cropPercentToInitialArea(c: CropPercent): Area {
@@ -276,27 +272,16 @@ export function CreateFlow() {
   }, [searchParams, router]);
 
   /**
-   * Portrait (and similar) frames are narrower than a typical photo; default zoom centers and often clips the
-   * left/right (e.g. nose on the right). When the image is wider than the crop aspect, start zoomed out.
+   * Stop fighting the user: we used to auto-zoom-out wide photos to "show more" on portrait frames. That dropped
+   * the cropper below 1 and the resulting crop region extended outside the image, which the server later padded —
+   * net effect was the subject getting scaled to fill the frame on rebuild. We now leave the zoom at 1 (cover)
+   * and the user can drag/zoom-out themselves; padding is honored server-side when they do.
    */
   useEffect(() => {
     if (step !== 2 || !imageUrl || !mediaSize?.naturalWidth || !mediaSize?.naturalHeight) return;
-    const nw = mediaSize.naturalWidth;
-    const nh = mediaSize.naturalHeight;
-    if (nh < 1) return;
     const key = `${imageUrl}|${aspect}`;
-    if (resumeSkipWideAutoZoomRef.current) {
-      autoCropZoomKeyRef.current = key;
-      resumeSkipWideAutoZoomRef.current = false;
-      return;
-    }
-    if (autoCropZoomKeyRef.current === key) return;
-    const imgAR = nw / nh;
-    if (imgAR > aspect + 0.002) {
-      setZoom(CROP_MIN_ZOOM);
-      setCrop({ x: 0, y: 0 });
-    }
     autoCropZoomKeyRef.current = key;
+    resumeSkipWideAutoZoomRef.current = false;
   }, [step, imageUrl, mediaSize?.naturalWidth, mediaSize?.naturalHeight, aspect]);
 
   const stitchWidth = useMemo(() => {
@@ -333,6 +318,11 @@ export function CreateFlow() {
     setCroppedAreaPixels(pixels);
   }, []);
 
+  /**
+   * Returns the crop region in % of the source image. Values can fall outside [0, 100] when the user zoomed
+   * below 1 to add margin around the subject — the server pads those out-of-bounds areas with white so what
+   * the user framed is what they get. We do NOT clamp here; clamping made margin-zoom collapse to "fill frame".
+   */
   const percentCrop = useCallback((): CropPercent => {
     if (!mediaSize?.naturalWidth || !mediaSize.naturalHeight) {
       return { x: 0, y: 0, width: 100, height: 100 };
@@ -343,10 +333,10 @@ export function CreateFlow() {
     const nw = mediaSize.naturalWidth;
     const nh = mediaSize.naturalHeight;
     return {
-      x: clampPercent((croppedAreaPixels.x / nw) * 100),
-      y: clampPercent((croppedAreaPixels.y / nh) * 100),
-      width: clampPercent((croppedAreaPixels.width / nw) * 100),
-      height: clampPercent((croppedAreaPixels.height / nh) * 100),
+      x: (croppedAreaPixels.x / nw) * 100,
+      y: (croppedAreaPixels.y / nh) * 100,
+      width: (croppedAreaPixels.width / nw) * 100,
+      height: (croppedAreaPixels.height / nh) * 100,
     };
   }, [croppedAreaPixels, mediaSize]);
 

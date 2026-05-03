@@ -107,7 +107,11 @@ function fitFontSize(
   maxWidth: number,
   maxBand: number,
 ): number {
-  let size = Math.min(64, Math.max(16, Math.round(maxBand * 0.22)));
+  /**
+   * Start from a band-proportional size so big crops (e.g. 1500×2000 from server-side raster) get a font that is
+   * visible after we resize down to the stitch grid. Capping at 64 made titles disappear into a couple of stitches.
+   */
+  let size = Math.max(16, Math.round(maxBand * 0.22));
   const min = 14;
   while (size >= min) {
     ctx.font = buildFontCss(typography, size);

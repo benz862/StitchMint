@@ -56,43 +56,76 @@ export type PatternResult = {
   avgBlockSize: number;
 };
 
-function clampCrop(c: CropPercent): CropPercent {
-  return {
-    x: Math.max(0, Math.min(100, c.x)),
-    y: Math.max(0, Math.min(100, c.y)),
-    width: Math.max(1, Math.min(100, c.width)),
-    height: Math.max(1, Math.min(100, c.height)),
-  };
+/**
+ * Honors crop regions that extend OUTSIDE the source image (when the user zoomed below 1 in the cropper to add
+ * margin). The intersection is extracted from the photo, then padded with white so the result matches what the
+ * user framed instead of getting clamped to the photo edges (which previously made the subject "fill the frame").
+ */
+async function extractRequestedCrop(imageBuffer: Buffer, cropPct: CropPercent): Promise<Buffer> {
+  const meta = await sharp(imageBuffer).rotate().metadata();
+  const iw = meta.width ?? 1;
+  const ih = meta.height ?? 1;
+
+  const wantWidthF = Math.max(1, (cropPct.width / 100) * iw);
+  const wantHeightF = Math.max(1, (cropPct.height / 100) * ih);
+  const wantLeftF = (cropPct.x / 100) * iw;
+  const wantTopF = (cropPct.y / 100) * ih;
+
+  const wantW = Math.max(1, Math.round(wantWidthF));
+  const wantH = Math.max(1, Math.round(wantHeightF));
+  const wantL = Math.round(wantLeftF);
+  const wantT = Math.round(wantTopF);
+
+  const inLeft = Math.max(0, Math.min(iw, wantL));
+  const inTop = Math.max(0, Math.min(ih, wantT));
+  const inRight = Math.max(0, Math.min(iw, wantL + wantW));
+  const inBottom = Math.max(0, Math.min(ih, wantT + wantH));
+  const inWidth = Math.max(0, inRight - inLeft);
+  const inHeight = Math.max(0, inBottom - inTop);
+
+  if (inWidth < 1 || inHeight < 1) {
+    return sharp({
+      create: { width: wantW, height: wantH, channels: 3, background: { r: 255, g: 255, b: 255 } },
+    })
+      .png()
+      .toBuffer();
+  }
+
+  let pipeline = sharp(imageBuffer).rotate().extract({
+    left: inLeft,
+    top: inTop,
+    width: inWidth,
+    height: inHeight,
+  });
+
+  const padLeft = Math.max(0, inLeft - wantL);
+  const padTop = Math.max(0, inTop - wantT);
+  const padRight = Math.max(0, wantW - inWidth - padLeft);
+  const padBottom = Math.max(0, wantH - inHeight - padTop);
+
+  if (padLeft || padTop || padRight || padBottom) {
+    pipeline = pipeline.extend({
+      top: padTop,
+      bottom: padBottom,
+      left: padLeft,
+      right: padRight,
+      background: { r: 255, g: 255, b: 255, alpha: 1 },
+    });
+  }
+
+  return pipeline.png().toBuffer();
 }
 
 export async function generatePattern(input: PatternGenerateInput): Promise<PatternResult> {
   const threads = loadDmcThreads();
   const maxColors = DETAIL_LEVELS[input.detailLevel].maxColors;
-  const crop = clampCrop(input.crop);
-
-  const meta = await sharp(input.imageBuffer).rotate().metadata();
-  const iw = meta.width ?? 1;
-  const ih = meta.height ?? 1;
-
-  const left = Math.round((crop.x / 100) * iw);
-  const top = Math.round((crop.y / 100) * ih);
-  const width = Math.round((crop.width / 100) * iw);
-  const height = Math.round((crop.height / 100) * ih);
 
   /**
-   * Crop original at full resolution, THEN merge text overlay so the saved overlay coordinates (% of crop frame)
-   * map 1:1 to the same crop the user saw in the editor. Resize/quantize happens after overlay is baked in.
+   * Crop original at full resolution (with white padding outside the photo), THEN merge text overlay so the
+   * saved overlay coordinates (% of crop frame) map 1:1 to the same crop the user saw in the editor. Resize and
+   * quantize happen after overlay is baked in.
    */
-  let cropBuffer = await sharp(input.imageBuffer)
-    .rotate()
-    .extract({
-      left: Math.min(left, iw - 1),
-      top: Math.min(top, ih - 1),
-      width: Math.max(1, Math.min(width, iw - left)),
-      height: Math.max(1, Math.min(height, ih - top)),
-    })
-    .png()
-    .toBuffer();
+  let cropBuffer = await extractRequestedCrop(input.imageBuffer, input.crop);
 
   if (input.overlaySpec && input.overlaySpec.text.trim().length > 0) {
     cropBuffer = await applyOverlayDraftToImageBuffer(cropBuffer, input.overlaySpec);
