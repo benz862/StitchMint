@@ -365,6 +365,27 @@ export function CreateFlow() {
   }, []);
 
   /**
+   * Computes the centered "cover" crop for `aspect` against an image of `imgW x imgH`. Used as a deterministic
+   * fallback when react-easy-crop hasn't fired onCropComplete by the time we PATCH (e.g. user opened Edit
+   * pattern and clicked through Continue → Build without ever interacting with the cropper). Without this we
+   * fall back to {0,0,100,100} which collapses the user's framing to "use the whole uncropped original".
+   */
+  const computeDefaultCropPct = useCallback((imgW: number, imgH: number, aspectRatio: number): CropPercent => {
+    if (!Number.isFinite(imgW) || !Number.isFinite(imgH) || imgW <= 0 || imgH <= 0) {
+      return { x: 0, y: 0, width: 100, height: 100 };
+    }
+    const imgAspect = imgW / imgH;
+    if (imgAspect > aspectRatio) {
+      const cropW = imgH * aspectRatio;
+      const x = (imgW - cropW) / 2;
+      return { x: (x / imgW) * 100, y: 0, width: (cropW / imgW) * 100, height: 100 };
+    }
+    const cropH = imgW / aspectRatio;
+    const y = (imgH - cropH) / 2;
+    return { x: 0, y: (y / imgH) * 100, width: 100, height: (cropH / imgH) * 100 };
+  }, []);
+
+  /**
    * Returns the crop region in % of the source image. Values can fall outside [0, 100] when the user zoomed
    * below 1 to add margin around the subject — the server pads those out-of-bounds areas with white so what
    * the user framed is what they get. We use the percent `area` directly (not the pixel rect, which
@@ -379,18 +400,21 @@ export function CreateFlow() {
         height: croppedAreaPercent.height,
       };
     }
-    if (!mediaSize?.naturalWidth || !mediaSize.naturalHeight || !croppedAreaPixels) {
-      return { x: 0, y: 0, width: 100, height: 100 };
+    if (mediaSize?.naturalWidth && mediaSize?.naturalHeight && croppedAreaPixels) {
+      const nw = mediaSize.naturalWidth;
+      const nh = mediaSize.naturalHeight;
+      return {
+        x: (croppedAreaPixels.x / nw) * 100,
+        y: (croppedAreaPixels.y / nh) * 100,
+        width: (croppedAreaPixels.width / nw) * 100,
+        height: (croppedAreaPixels.height / nh) * 100,
+      };
     }
-    const nw = mediaSize.naturalWidth;
-    const nh = mediaSize.naturalHeight;
-    return {
-      x: (croppedAreaPixels.x / nw) * 100,
-      y: (croppedAreaPixels.y / nh) * 100,
-      width: (croppedAreaPixels.width / nw) * 100,
-      height: (croppedAreaPixels.height / nh) * 100,
-    };
-  }, [croppedAreaPercent, croppedAreaPixels, mediaSize]);
+    if (mediaSize?.naturalWidth && mediaSize?.naturalHeight) {
+      return computeDefaultCropPct(mediaSize.naturalWidth, mediaSize.naturalHeight, aspect);
+    }
+    return { x: 0, y: 0, width: 100, height: 100 };
+  }, [croppedAreaPercent, croppedAreaPixels, mediaSize, aspect, computeDefaultCropPct]);
 
   const pickTextColorFromScreen = async () => {
     type EyeCtor = new () => { open: () => Promise<{ sRGBHex: string }> };
