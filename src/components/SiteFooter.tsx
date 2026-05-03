@@ -8,19 +8,17 @@ const copyrightYear = new Date().getFullYear();
 
 export function SiteFooter() {
   return (
-    <footer className="mt-auto border-t border-line/80 bg-card/60">
-      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-        <div className="flex flex-col gap-6 text-sm text-muted sm:flex-row sm:items-start sm:justify-between sm:gap-8">
-          <div className="flex min-w-0 flex-col gap-4 sm:max-w-xl">
-            <Link href="/" className="inline-flex w-fit shrink-0 opacity-90 transition hover:opacity-100" aria-label="StitchMint home">
-              <StitchMintLogo variant="footer" />
-            </Link>
-            <p className="leading-relaxed">
-              Generated patterns are artistic interpretations. Colors are matched to DMC thread colors; final results vary
-              with calibration, fabric, dye lots, and technique. Only upload images you own or have permission to use.
-            </p>
-          </div>
-          <nav className="flex shrink-0 flex-wrap gap-x-5 gap-y-2 sm:flex-col sm:items-end" aria-label="Footer">
+    <footer className="mt-auto border-t border-line/80 bg-card/60 text-center">
+      <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
+        <div className="flex flex-col items-center gap-6 text-sm text-muted">
+          <Link href="/" className="inline-flex opacity-90 transition hover:opacity-100" aria-label="StitchMint home">
+            <StitchMintLogo variant="footer" />
+          </Link>
+          <p className="leading-relaxed">
+            Generated patterns are artistic interpretations. Colors are matched to DMC thread colors; final results vary
+            with calibration, fabric, dye lots, and technique. Only upload images you own or have permission to use.
+          </p>
+          <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2" aria-label="Footer">
             <a
               href={`mailto:${supportEmail}`}
               title={supportEmail}
