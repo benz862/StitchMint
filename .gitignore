@@ -49,6 +49,15 @@ yarn-error.log*
 /tier-samples-out/
 /webapp-showcase-out/
 
+# Local downloaded pattern ZIPs / unpacked test bundles
+/*.zip
+/Basset/
+/New Basset/
+/irish/
+/new */
+/new westie/
+/new westie 2/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

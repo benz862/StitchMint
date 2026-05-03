@@ -172,8 +172,9 @@ async function handlePatch(request: Request, ctx: { params: Promise<{ id: string
   const admin = createServiceRoleClient();
 
   try {
-    const original = await downloadOriginalBufferForGeneration(row as { original_image_url: string; overlay_draft?: unknown });
-    const pattern = await runPatternGeneration(original, settings);
+    const generationRow = row as { original_image_url: string; overlay_draft?: unknown };
+    const original = await downloadOriginalBufferForGeneration(generationRow);
+    const pattern = await runPatternGeneration(original, settings, generationRow);
     const previewPath = await uploadPreviewPng(id, pattern.previewPng);
 
     const gridPayload = {

@@ -5,6 +5,8 @@ import { reduceConfetti, type GridCell } from "@/lib/confetti";
 import { assignSymbols, estimateSkeins, findNearestDmc, loadDmcThreads, type DmcThread } from "@/lib/dmc";
 import { kMeansPixels } from "@/lib/kmeans";
 import { averageBlockSize, computeStitchabilityScore, difficultyLabel } from "@/lib/stitchability";
+import type { TextOverlaySpec } from "@/lib/canvas-crop-text";
+import { applyOverlayDraftToImageBuffer } from "@/lib/overlay-sharp";
 
 export type CropPercent = {
   /** 0–100 of image width */
@@ -23,6 +25,8 @@ export type PatternGenerateInput = {
   fabricCount: number;
   /** Extra sharpening for expert/detail */
   enhance?: boolean;
+  /** Optional overlay text. Coordinates are % of the cropped raster (post-extract). */
+  overlaySpec?: TextOverlaySpec | null;
 };
 
 export type PatternColorRow = {
@@ -75,7 +79,11 @@ export async function generatePattern(input: PatternGenerateInput): Promise<Patt
   const width = Math.round((crop.width / 100) * iw);
   const height = Math.round((crop.height / 100) * ih);
 
-  let pipeline = sharp(input.imageBuffer)
+  /**
+   * Crop original at full resolution, THEN merge text overlay so the saved overlay coordinates (% of crop frame)
+   * map 1:1 to the same crop the user saw in the editor. Resize/quantize happens after overlay is baked in.
+   */
+  let cropBuffer = await sharp(input.imageBuffer)
     .rotate()
     .extract({
       left: Math.min(left, iw - 1),
@@ -83,6 +91,14 @@ export async function generatePattern(input: PatternGenerateInput): Promise<Patt
       width: Math.max(1, Math.min(width, iw - left)),
       height: Math.max(1, Math.min(height, ih - top)),
     })
+    .png()
+    .toBuffer();
+
+  if (input.overlaySpec && input.overlaySpec.text.trim().length > 0) {
+    cropBuffer = await applyOverlayDraftToImageBuffer(cropBuffer, input.overlaySpec);
+  }
+
+  let pipeline = sharp(cropBuffer)
     .resize({
       width: input.stitchWidth,
       withoutEnlargement: false,

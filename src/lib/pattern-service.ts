@@ -1,7 +1,6 @@
 import type { DetailLevelId } from "@/lib/constants";
 import { generatePattern, type CropPercent, type PatternResult } from "@/lib/pattern-engine";
 import { parseOverlayDraftForServer } from "@/lib/overlay-draft";
-import { applyOverlayDraftToImageBuffer } from "@/lib/overlay-sharp";
 import { buildPatternZipArchive } from "@/lib/zip-package";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { STORAGE_BUCKETS } from "@/lib/buckets";
@@ -15,6 +14,11 @@ export type PatternSettings = {
   fabricCount: number;
 };
 
+export type PatternRowForGeneration = {
+  original_image_url: string | null;
+  overlay_draft?: unknown;
+};
+
 export async function downloadOriginalBuffer(path: string): Promise<Buffer> {
   const supabase = createServiceRoleClient();
   const { data, error } = await supabase.storage.from(STORAGE_BUCKETS.originals).download(path);
@@ -24,22 +28,22 @@ export async function downloadOriginalBuffer(path: string): Promise<Buffer> {
   return Buffer.from(await data.arrayBuffer());
 }
 
-/** Original raster plus optional `overlay_draft` merged the same way as the browser before quantization. */
-export async function downloadOriginalBufferForGeneration(row: {
-  original_image_url: string | null;
-  overlay_draft?: unknown;
-}): Promise<Buffer> {
+/**
+ * Returns the raw original raster. Overlay text is no longer merged here — generation merges it after
+ * cropping so the overlay coordinates (% of crop frame) line up with what the user saw in the editor and
+ * survive re-cropping on resume.
+ */
+export async function downloadOriginalBufferForGeneration(row: PatternRowForGeneration): Promise<Buffer> {
   if (!row.original_image_url) throw new Error("Original image path missing");
-  let buf = await downloadOriginalBuffer(row.original_image_url as string);
-  const spec = parseOverlayDraftForServer(row.overlay_draft);
-  if (spec) buf = await applyOverlayDraftToImageBuffer(buf, spec);
-  return buf;
+  return downloadOriginalBuffer(row.original_image_url as string);
 }
 
 export async function runPatternGeneration(
   originalBuffer: Buffer,
   settings: PatternSettings,
+  row?: PatternRowForGeneration,
 ): Promise<PatternResult> {
+  const overlaySpec = row ? parseOverlayDraftForServer(row.overlay_draft) : null;
   return generatePattern({
     imageBuffer: originalBuffer,
     crop: settings.crop,
@@ -47,6 +51,7 @@ export async function runPatternGeneration(
     detailLevel: settings.detailLevel,
     fabricCount: settings.fabricCount,
     enhance: settings.detailLevel === "expert",
+    overlaySpec,
   });
 }
 

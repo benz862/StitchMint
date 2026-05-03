@@ -9,14 +9,13 @@ import { FABRIC_COUNTS } from "@/lib/constants";
 import { STORAGE_BUCKETS } from "@/lib/buckets";
 import type { TextTypography } from "@/lib/canvas-crop-text";
 import {
-  composeCroppedImageWithoutText,
   defaultTextTypography,
   FONT_SIZE_SCALE_MAX,
   FONT_SIZE_SCALE_MIN,
   OVERLAY_FONT_OPTIONS,
 } from "@/lib/canvas-crop-text";
 import { CropTextLiveOverlay } from "@/components/create/CropTextLiveOverlay";
-import { encodeCanvasToWebpBlob, encodeImageFileToWebpBlob, getEncodedOutputSize } from "@/lib/encode-original-client";
+import { encodeImageFileToWebpBlob } from "@/lib/encode-original-client";
 import { finishedSizeInches, inchesToCm } from "@/lib/measurements";
 import type { CropPercent } from "@/lib/pattern-engine";
 import { buildOverlayDraftV1, parseOverlayDraftForServer } from "@/lib/overlay-draft";
@@ -235,13 +234,7 @@ export function CreateFlow() {
         }
 
         const savedCrop = parsePatternRowCrop(row);
-        if (overlaySpec) {
-          setResumeInitialCropPct({ x: 0, y: 0, width: 100, height: 100 });
-        } else if (savedCrop) {
-          setResumeInitialCropPct(cropPercentToInitialArea(savedCrop));
-        } else {
-          setResumeInitialCropPct(null);
-        }
+        setResumeInitialCropPct(savedCrop ? cropPercentToInitialArea(savedCrop) : null);
         setCropperBootId((k) => k + 1);
         resumeSkipWideAutoZoomRef.current = true;
 
@@ -407,35 +400,12 @@ export function CreateFlow() {
       } = await supabase.auth.getUser();
       if (!user) throw new Error("You need to be signed in to upload.");
 
-      let webpBlob: Blob;
-      let afterTextUpload: (() => void) | null = null;
-
-      if (useTextOverlay && imageUrl && croppedAreaPixels) {
-        const canvas = await composeCroppedImageWithoutText(imageUrl, croppedAreaPixels);
-        webpBlob = await encodeCanvasToWebpBlob(canvas);
-        const { width: ow, height: oh } = getEncodedOutputSize(canvas.width, canvas.height);
-        const prevUrl = imageUrl;
-        const baseName = file.name.replace(/\.[^.]+$/i, "") || "photo";
-        afterTextUpload = () => {
-          const nextUrl = URL.createObjectURL(webpBlob);
-          if (prevUrl) URL.revokeObjectURL(prevUrl);
-          setImageUrl(nextUrl);
-          setMediaSize({
-            width: ow,
-            height: oh,
-            naturalWidth: ow,
-            naturalHeight: oh,
-          });
-          setCroppedAreaPixels({ x: 0, y: 0, width: ow, height: oh });
-          setCrop({ x: 0, y: 0 });
-          autoCropZoomKeyRef.current = null;
-          const ct = webpBlob.type === "image/webp" ? "image/webp" : "image/jpeg";
-          const ext = ct === "image/webp" ? "webp" : "jpg";
-          setFile(new File([webpBlob], `${baseName}.${ext}`, { type: ct }));
-        };
-      } else {
-        webpBlob = await encodeImageFileToWebpBlob(file);
-      }
+      /**
+       * Always upload the FULL original photo (not the crop). The server applies the saved crop and overlay
+       * text at generate time, so resuming from preview can re-frame the photo (e.g. recover a clipped nose)
+       * without losing pixels we already threw away.
+       */
+      const webpBlob: Blob = await encodeImageFileToWebpBlob(file);
 
       const contentType = webpBlob.type === "image/webp" ? "image/webp" : "image/jpeg";
       const ext = contentType === "image/webp" ? "webp" : "jpg";
@@ -462,8 +432,6 @@ export function CreateFlow() {
         .update({ original_image_url: storagePath, overlay_draft: overlayDraft })
         .eq("id", draftId);
       if (updErr) throw new Error(updErr.message ?? "Could not attach image to pattern");
-
-      afterTextUpload?.();
 
       setPatternId(draftId);
       setStep(3);
