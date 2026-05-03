@@ -170,11 +170,26 @@ function drawCover(
     width: tw,
     align: "left",
   });
-  doc.moveDown(0.2);
-  doc.fontSize(10).fillColor("#6b5f52").text(
+  doc.moveDown(0.35);
+  const bandH = 28;
+  const bandX = PDF_MARGIN_PT;
+  const bandY = doc.y;
+  const bandBg = chartVariant === "large" ? "#6b3f1a" : "#1e3a5f";
+  const bandLabel = chartVariant === "large" ? "LARGE-PRINT CHART PDF" : "REGULAR CHART PDF";
+  doc.save();
+  doc.fillColor(bandBg).roundedRect(bandX, bandY, tw, bandH, 5).fill();
+  doc.font("Helvetica-Bold").fontSize(12).fillColor("#ffffff").text(bandLabel, bandX, bandY + 8, {
+    width: tw,
+    align: "center",
+  });
+  doc.restore();
+  doc.font("Helvetica");
+  doc.y = bandY + bandH + 10;
+  doc.x = PDF_MARGIN_PT;
+  doc.fontSize(9).fillColor("#5c5346").text(
     chartVariant === "large"
-      ? "This PDF: large-print chart (same pattern as the regular PDF — bigger symbols, more chart pages)."
-      : "This PDF: regular chart (same pattern as the large-print PDF — smaller symbols, fewer chart pages).",
+      ? "Companion file in your ZIP: Pattern-Regular.pdf (same grid, smaller symbols, fewer chart pages)."
+      : "Companion file in your ZIP: Pattern-Large-Print.pdf (same grid, larger symbols, more chart pages).",
     { width: tw, align: "left" },
   );
   doc.moveDown(0.45);
