@@ -158,12 +158,8 @@ function drawStraightAtAnchor(
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = color;
-  ctx.strokeStyle = "rgba(0,0,0,0.35)";
-  ctx.lineWidth = Math.max(2, fontSize * 0.09);
-  ctx.lineJoin = "round";
   lines.forEach((line, i) => {
     const y = startY + i * lineH;
-    ctx.strokeText(line, ax, y);
     ctx.fillText(line, ax, y);
     if (typography.underline) {
       ctx.save();
@@ -174,7 +170,8 @@ function drawStraightAtAnchor(
   });
 }
 
-function drawOverlay(ctx: CanvasRenderingContext2D, cw: number, ch: number, spec: TextOverlaySpec) {
+/** Same layout as the create-flow canvas; safe to call from Node (`@napi-rs/canvas`) or browser. */
+export function drawTextOverlayOnContext(ctx: CanvasRenderingContext2D, cw: number, ch: number, spec: TextOverlaySpec) {
   const rawLines = spec.text.replace(/\r\n/g, "\n").split("\n");
   const lines = rawLines.map((s) => s.trim()).filter((s) => s.length > 0);
   if (lines.length === 0) return;
@@ -201,7 +198,7 @@ export async function composeCroppedImageWithOverlay(
   if (spec.text.trim().length > 0) {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("2D canvas is not available");
-    drawOverlay(ctx, canvas.width, canvas.height, spec);
+    drawTextOverlayOnContext(ctx, canvas.width, canvas.height, spec);
   }
   return canvas;
 }

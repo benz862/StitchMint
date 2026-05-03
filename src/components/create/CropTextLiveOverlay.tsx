@@ -59,7 +59,6 @@ export function CropTextLiveOverlay({
         fontStyle: typography.italic ? "italic" : "normal",
         textDecoration: typography.underline ? "underline" : "none",
         color: safeColor,
-        textShadow: "0 0 2px rgba(0,0,0,0.95), 0 1px 4px rgba(0,0,0,0.85)",
         fontSize: `clamp(${11 * sizeS}px, ${2.9 * sizeS}vmin, ${28 * sizeS}px)`,
         lineHeight: 1.28,
         whiteSpace: "pre-wrap",
