@@ -1,7 +1,6 @@
 import type Stripe from "stripe";
-import { Resend } from "resend";
 import { getPublicAppUrl } from "@/lib/app-url";
-import { getResendApiKey, getResendFrom } from "@/lib/resend-config";
+import { getResendClient, getResendFrom } from "@/lib/resend-config";
 
 /**
  * After a successful paid checkout, notify the buyer where to download (same account as purchase).
@@ -14,8 +13,8 @@ export async function sendPatternReadyEmail(input: {
   /** When Stripe session has no customer email (rare), use profile email from DB. */
   fallbackEmail?: string | null;
 }): Promise<void> {
-  const key = getResendApiKey();
-  if (!key) return;
+  const resend = getResendClient();
+  if (!resend) return;
 
   const from = getResendFrom();
   const s = input.session;
@@ -35,7 +34,6 @@ export async function sendPatternReadyEmail(input: {
   const myPatternsUrl = `${origin}/my-patterns`;
   const successUrl = `${origin}/success?session_id=${encodeURIComponent(s.id)}`;
 
-  const resend = new Resend(key);
   const { error } = await resend.emails.send({
     from,
     to,

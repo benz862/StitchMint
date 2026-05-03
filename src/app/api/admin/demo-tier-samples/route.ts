@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { Resend } from "resend";
 import { ADMIN_DEMO_INLINE_ZIP_MAX_BYTES, uploadAdminDemoZipAndSignUrl } from "@/lib/admin-demo-storage";
 import { isAdminEmail } from "@/lib/auth-admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getResendApiKey, getResendFrom, resendApiKeyMissingHint } from "@/lib/resend-config";
+import { getResendClient, getResendFrom, resendApiKeyMissingHint } from "@/lib/resend-config";
 import { buildTierSamplesMegaZip } from "@/lib/tier-sample-pack";
 
 export const runtime = "nodejs";
@@ -22,8 +21,7 @@ function safeBaseTitle(name: string): string {
 }
 
 export async function GET() {
-  const canEmail = Boolean(getResendApiKey());
-  return NextResponse.json({ canEmail, keyEnvName: "RESEND_API_KEY" });
+  return NextResponse.json({ canEmail: Boolean(getResendClient()), keyEnvName: "RESEND_API_KEY" });
 }
 
 export async function POST(request: Request) {
@@ -102,14 +100,13 @@ export async function POST(request: Request) {
 
   let emailStatus = "skipped";
   if (alsoEmail) {
-    const key = getResendApiKey();
+    const resend = getResendClient();
     const from = getResendFrom();
-    if (!key) {
+    if (!resend) {
       emailStatus = "missing-resend";
       console.warn("[demo-tier-samples]", resendApiKeyMissingHint());
     } else {
       try {
-        const resend = new Resend(key);
         const canAttach = mega.length <= RESEND_ZIP_ATTACHMENT_MAX_BYTES;
         const { error } = await resend.emails.send({
           from,

@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { Resend } from "resend";
 import { isAdminEmail } from "@/lib/auth-admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getResendApiKey, getResendFrom, resendApiKeyMissingHint } from "@/lib/resend-config";
+import { getResendClient, getResendFrom, resendApiKeyMissingHint } from "@/lib/resend-config";
 
 export const runtime = "nodejs";
 
@@ -18,13 +17,12 @@ export async function POST() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const key = getResendApiKey();
-  if (!key) {
+  const resend = getResendClient();
+  if (!resend) {
     return NextResponse.json({ error: "RESEND_API_KEY is not set", hint: resendApiKeyMissingHint() }, { status: 400 });
   }
 
   const from = getResendFrom();
-  const resend = new Resend(key);
   const { data, error } = await resend.emails.send({
     from,
     to: user.email,
