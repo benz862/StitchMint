@@ -243,7 +243,16 @@ export function CreateFlow() {
         setCrop({ x: 0, y: 0 });
         setZoom(1);
         setCroppedAreaPixels(null);
-        setCroppedAreaPercent(null);
+        /**
+         * Seed the percent-area state with the saved crop so a "step through without touching the cropper"
+         * resume still PATCHes the user's framing instead of falling back to {0,0,100,100} (full image). The
+         * cropper will overwrite this if the user actually drags/zooms.
+         */
+        setCroppedAreaPercent(
+          savedCrop
+            ? { x: savedCrop.x, y: savedCrop.y, width: savedCrop.width, height: savedCrop.height }
+            : null,
+        );
         setMediaSize(null);
         autoCropZoomKeyRef.current = null;
 
