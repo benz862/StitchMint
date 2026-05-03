@@ -1,0 +1,14 @@
+---
+description: After implementing changes, commit and push so the live site (Vercel) stays current; the maintainer verifies on production, not local.
+alwaysApply: true
+---
+
+# Commit and push to GitHub
+
+When you finish a task that changes project files (code, config the repo owns, etc.):
+
+1. **Stage** only intentional changes. Do not add local scratch assets (random images, test ZIPs, `node_modules`, secrets, `.env.local`) unless the user explicitly asked to version them.
+2. **Commit** on `main` with a clear message (what changed and why).
+3. **Push** to `origin` (e.g. `git push origin main`) so CI/Vercel can deploy.
+
+If there is nothing to commit, say so. If push fails (auth, conflicts), report the error and what is needed to resolve it.
