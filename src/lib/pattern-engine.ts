@@ -130,7 +130,19 @@ export async function generatePattern(input: PatternGenerateInput): Promise<Patt
   let cropBuffer = await extractRequestedCrop(input.imageBuffer, input.crop);
 
   if (input.overlaySpec && input.overlaySpec.text.trim().length > 0) {
-    cropBuffer = await applyOverlayDraftToImageBuffer(cropBuffer, input.overlaySpec);
+    /**
+     * Don't let a Skia/font/image error here silently nuke the title — log loudly and continue with the
+     * un-overlaid crop so the user still gets a preview, and we have a server-side breadcrumb to chase.
+     */
+    try {
+      cropBuffer = await applyOverlayDraftToImageBuffer(cropBuffer, input.overlaySpec);
+      console.log("[generatePattern] overlay rasterized onto crop", {
+        text: input.overlaySpec.text,
+        bytes: cropBuffer.byteLength,
+      });
+    } catch (err) {
+      console.error("[generatePattern] applyOverlayDraftToImageBuffer FAILED", err);
+    }
   }
 
   let pipeline = sharp(cropBuffer)
