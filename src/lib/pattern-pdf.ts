@@ -501,7 +501,7 @@ export async function buildReadMeFirstPdf(coverBackground?: CoverBackgroundImage
     "Fabric: Aida is beginner-friendly. Your pattern notes the count you selected.",
     "Needle: a size 24 tapestry needle is a common choice for 14–18 count Aida.",
     "Disclaimer: your finished piece will reflect your fabric, floss dye lots, lighting, and stitching style. This chart is a guide, not a guarantee.",
-    `Questions: ${process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "hello@stitchmint.example"}`,
+    `Questions: ${process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@skillbinder.com"}`,
   ];
   for (const s of sections) {
     doc.text(s, { width: tw, align: "left" });

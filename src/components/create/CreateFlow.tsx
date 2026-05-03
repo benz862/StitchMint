@@ -19,6 +19,10 @@ const ASPECT_PRESETS = [
   { id: "square", label: "Square", value: 1 },
 ] as const;
 
+/** react-easy-crop: below 1 shows more of the image in the frame; above 1 crops tighter. */
+const CROP_MIN_ZOOM = 0.5;
+const CROP_MAX_ZOOM = 3;
+
 type Step = 1 | 2 | 3 | 4 | 5;
 
 function clampPercent(n: number) {
@@ -58,6 +62,9 @@ export function CreateFlow() {
     setFile(f);
     if (imageUrl) URL.revokeObjectURL(imageUrl);
     setImageUrl(URL.createObjectURL(f));
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setCroppedAreaPixels(null);
     setStep(2);
   };
 
@@ -197,7 +204,12 @@ export function CreateFlow() {
                 <button
                   key={p.id}
                   type="button"
-                  onClick={() => setAspect(p.value)}
+                  onClick={() => {
+                    setAspect(p.value);
+                    setCrop({ x: 0, y: 0 });
+                    setZoom(1);
+                    setCroppedAreaPixels(null);
+                  }}
                   className={`rounded-full px-4 py-2 text-sm ${
                     aspect === p.value ? "bg-ink text-cream" : "bg-cream-deep/80 text-ink hover:bg-cream-deep"
                   }`}
@@ -211,6 +223,8 @@ export function CreateFlow() {
                 image={imageUrl}
                 crop={crop}
                 zoom={zoom}
+                minZoom={CROP_MIN_ZOOM}
+                maxZoom={CROP_MAX_ZOOM}
                 aspect={aspect}
                 onCropChange={setCrop}
                 onZoomChange={setZoom}
@@ -220,11 +234,14 @@ export function CreateFlow() {
               />
             </div>
             <div>
-              <label className="text-sm text-muted">Zoom</label>
+              <label className="text-sm text-muted">Zoom in or out</label>
+              <p className="mt-1 text-xs text-muted">
+                Drag left to see more of your photo in the frame, right to zoom in tighter.
+              </p>
               <input
                 type="range"
-                min={1}
-                max={3}
+                min={CROP_MIN_ZOOM}
+                max={CROP_MAX_ZOOM}
                 step={0.01}
                 value={zoom}
                 onChange={(e) => setZoom(Number(e.target.value))}
