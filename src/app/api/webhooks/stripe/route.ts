@@ -12,6 +12,7 @@ import {
 } from "@/lib/pattern-service";
 import { STORAGE_BUCKETS } from "@/lib/buckets";
 import type { PatternResult } from "@/lib/pattern-engine";
+import { sendPatternReadyEmail } from "@/lib/purchase-email";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -134,6 +135,21 @@ export async function POST(request: Request) {
       currency,
       status: "completed",
     });
+
+    let profileEmail: string | null = null;
+    const { data: prof } = await admin.from("profiles").select("email").eq("id", pattern.user_id).maybeSingle();
+    if (prof?.email && typeof prof.email === "string") profileEmail = prof.email;
+
+    try {
+      await sendPatternReadyEmail({
+        session,
+        patternId,
+        patternTitle: String(pattern.title ?? "Your pattern"),
+        fallbackEmail: profileEmail,
+      });
+    } catch (emailErr) {
+      console.error("[webhook/stripe] Purchase email failed (order still completed)", emailErr);
+    }
   } catch (e) {
     const message = e instanceof Error ? e.message : "Fulfillment error";
     await admin.from("patterns").update({ generation_error: message }).eq("id", patternId);
