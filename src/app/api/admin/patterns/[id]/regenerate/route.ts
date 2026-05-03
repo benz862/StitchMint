@@ -4,7 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import {
   buildZipForPattern,
-  downloadOriginalBuffer,
+  downloadOriginalBufferForGeneration,
   hydratePatternFromSnapshot,
   uploadZipPackage,
   type PatternSettings,
@@ -60,7 +60,7 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
     previewPng,
   );
 
-  const original = await downloadOriginalBuffer(pattern.original_image_url as string);
+  const original = await downloadOriginalBufferForGeneration(pattern as { original_image_url: string; overlay_draft?: unknown });
   const settings: PatternSettings = {
     title: String(pattern.title ?? "My Pattern"),
     crop: pattern.crop as PatternSettings["crop"],

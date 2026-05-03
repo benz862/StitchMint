@@ -1,5 +1,7 @@
 import type { DetailLevelId } from "@/lib/constants";
 import { generatePattern, type CropPercent, type PatternResult } from "@/lib/pattern-engine";
+import { parseOverlayDraftForServer } from "@/lib/overlay-draft";
+import { applyOverlayDraftToImageBuffer } from "@/lib/overlay-sharp";
 import { buildPatternZipArchive } from "@/lib/zip-package";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { STORAGE_BUCKETS } from "@/lib/buckets";
@@ -20,6 +22,18 @@ export async function downloadOriginalBuffer(path: string): Promise<Buffer> {
     throw new Error(error?.message ?? "Failed to download original image");
   }
   return Buffer.from(await data.arrayBuffer());
+}
+
+/** Original raster plus optional `overlay_draft` merged the same way as the browser before quantization. */
+export async function downloadOriginalBufferForGeneration(row: {
+  original_image_url: string | null;
+  overlay_draft?: unknown;
+}): Promise<Buffer> {
+  if (!row.original_image_url) throw new Error("Original image path missing");
+  let buf = await downloadOriginalBuffer(row.original_image_url as string);
+  const spec = parseOverlayDraftForServer(row.overlay_draft);
+  if (spec) buf = await applyOverlayDraftToImageBuffer(buf, spec);
+  return buf;
 }
 
 export async function runPatternGeneration(

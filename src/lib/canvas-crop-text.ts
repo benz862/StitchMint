@@ -184,15 +184,20 @@ function drawOverlay(ctx: CanvasRenderingContext2D, cw: number, ch: number, spec
   drawStraightAtAnchor(ctx, lines, cw, ch, ax, ay, spec.typography, spec.color);
 }
 
+/** Loads the image and crops to `pixelCrop` without drawing text (used when overlay is stored in `overlay_draft`). */
+export async function composeCroppedImageWithoutText(imageUrl: string, pixelCrop: Area): Promise<HTMLCanvasElement> {
+  const img = await loadImage(imageUrl);
+  const safe = clampCrop(img, pixelCrop);
+  return cropImageToCanvas(img, safe);
+}
+
 /** Loads the image, crops to `pixelCrop`, then draws text overlay when `spec.text` is non-empty. */
 export async function composeCroppedImageWithOverlay(
   imageUrl: string,
   pixelCrop: Area,
   spec: TextOverlaySpec,
 ): Promise<HTMLCanvasElement> {
-  const img = await loadImage(imageUrl);
-  const safe = clampCrop(img, pixelCrop);
-  const canvas = cropImageToCanvas(img, safe);
+  const canvas = await composeCroppedImageWithoutText(imageUrl, pixelCrop);
   if (spec.text.trim().length > 0) {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("2D canvas is not available");

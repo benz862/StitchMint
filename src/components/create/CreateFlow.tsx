@@ -9,7 +9,7 @@ import { FABRIC_COUNTS } from "@/lib/constants";
 import { STORAGE_BUCKETS } from "@/lib/buckets";
 import type { TextTypography } from "@/lib/canvas-crop-text";
 import {
-  composeCroppedImageWithOverlay,
+  composeCroppedImageWithoutText,
   defaultTextTypography,
   FONT_SIZE_SCALE_MAX,
   FONT_SIZE_SCALE_MIN,
@@ -19,6 +19,7 @@ import { CropTextLiveOverlay } from "@/components/create/CropTextLiveOverlay";
 import { encodeCanvasToWebpBlob, encodeImageFileToWebpBlob, getEncodedOutputSize } from "@/lib/encode-original-client";
 import { finishedSizeInches, inchesToCm } from "@/lib/measurements";
 import type { CropPercent } from "@/lib/pattern-engine";
+import { buildOverlayDraftV1, parseOverlayDraftForServer } from "@/lib/overlay-draft";
 import { getPricingTierIdFromPatternRow } from "@/lib/pricing-checkout";
 import { readApiJson } from "@/lib/read-api-json";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -222,11 +223,20 @@ export function CreateFlow() {
           if (prevUrl) URL.revokeObjectURL(prevUrl);
           return URL.createObjectURL(blob);
         });
-        setOverlayText("");
-        setTextAnchorX(50);
-        setTextAnchorY(82);
-        setTextTypography(defaultTextTypography());
-        setTextColor("#ffffff");
+        const overlaySpec = parseOverlayDraftForServer(row.overlay_draft);
+        if (overlaySpec) {
+          setOverlayText(overlaySpec.text);
+          setTextAnchorX(overlaySpec.anchorX);
+          setTextAnchorY(overlaySpec.anchorY);
+          setTextTypography(overlaySpec.typography);
+          setTextColor(overlaySpec.color);
+        } else {
+          setOverlayText("");
+          setTextAnchorX(50);
+          setTextAnchorY(82);
+          setTextTypography(defaultTextTypography());
+          setTextColor("#ffffff");
+        }
         setCrop({ x: 0, y: 0 });
         setZoom(1);
         setCroppedAreaPixels(null);
@@ -387,13 +397,7 @@ export function CreateFlow() {
       let afterTextUpload: (() => void) | null = null;
 
       if (useTextOverlay && imageUrl && croppedAreaPixels) {
-        const canvas = await composeCroppedImageWithOverlay(imageUrl, croppedAreaPixels, {
-          text: trimmedOverlay,
-          anchorX: textAnchorX,
-          anchorY: textAnchorY,
-          typography: textTypography,
-          color: textColor,
-        });
+        const canvas = await composeCroppedImageWithoutText(imageUrl, croppedAreaPixels);
         webpBlob = await encodeCanvasToWebpBlob(canvas);
         const { width: ow, height: oh } = getEncodedOutputSize(canvas.width, canvas.height);
         const prevUrl = imageUrl;
@@ -430,9 +434,20 @@ export function CreateFlow() {
         .upload(storagePath, webpBlob, { contentType, upsert: true });
       if (upErr) throw new Error(upErr.message ?? "Upload to storage failed");
 
+      const overlayDraft =
+        useTextOverlay && trimmedOverlay.length > 0
+          ? buildOverlayDraftV1({
+              text: trimmedOverlay,
+              anchorX: textAnchorX,
+              anchorY: textAnchorY,
+              typography: textTypography,
+              color: textColor,
+            })
+          : null;
+
       const { error: updErr } = await supabase
         .from("patterns")
-        .update({ original_image_url: storagePath })
+        .update({ original_image_url: storagePath, overlay_draft: overlayDraft })
         .eq("id", draftId);
       if (updErr) throw new Error(updErr.message ?? "Could not attach image to pattern");
 

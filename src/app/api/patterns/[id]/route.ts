@@ -4,7 +4,7 @@ import { DETAIL_LEVELS } from "@/lib/constants";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import {
-  downloadOriginalBuffer,
+  downloadOriginalBufferForGeneration,
   runPatternGeneration,
   uploadPreviewPng,
   type PatternSettings,
@@ -172,7 +172,7 @@ async function handlePatch(request: Request, ctx: { params: Promise<{ id: string
   const admin = createServiceRoleClient();
 
   try {
-    const original = await downloadOriginalBuffer(row.original_image_url as string);
+    const original = await downloadOriginalBufferForGeneration(row as { original_image_url: string; overlay_draft?: unknown });
     const pattern = await runPatternGeneration(original, settings);
     const previewPath = await uploadPreviewPng(id, pattern.previewPng);
 

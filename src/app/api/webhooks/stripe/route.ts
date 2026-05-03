@@ -5,7 +5,7 @@ import { getStripe } from "@/lib/stripe";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import {
   buildZipForPattern,
-  downloadOriginalBuffer,
+  downloadOriginalBufferForGeneration,
   hydratePatternFromSnapshot,
   uploadZipPackage,
   type PatternSettings,
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
       previewPng,
     );
 
-    const original = await downloadOriginalBuffer(pattern.original_image_url as string);
+    const original = await downloadOriginalBufferForGeneration(pattern as { original_image_url: string; overlay_draft?: unknown });
     const crop = pattern.crop as PatternSettings["crop"];
     const settings: PatternSettings = {
       title: String(pattern.title ?? "My Pattern"),
