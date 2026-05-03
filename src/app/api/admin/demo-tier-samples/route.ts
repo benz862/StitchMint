@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { isAdminEmail } from "@/lib/auth-admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getResendApiKey, getResendFrom, resendApiKeyMissingHint } from "@/lib/resend-config";
 import { buildTierSamplesMegaZip } from "@/lib/tier-sample-pack";
 
 export const runtime = "nodejs";
@@ -16,8 +17,8 @@ function safeBaseTitle(name: string): string {
 }
 
 export async function GET() {
-  const canEmail = Boolean(process.env.RESEND_API_KEY?.trim());
-  return NextResponse.json({ canEmail });
+  const canEmail = Boolean(getResendApiKey());
+  return NextResponse.json({ canEmail, keyEnvName: "RESEND_API_KEY" });
 }
 
 export async function POST(request: Request) {
@@ -61,10 +62,11 @@ export async function POST(request: Request) {
 
   let emailStatus = "skipped";
   if (alsoEmail) {
-    const key = process.env.RESEND_API_KEY?.trim();
-    const from = process.env.RESEND_FROM?.trim() || "StitchMint <onboarding@resend.dev>";
+    const key = getResendApiKey();
+    const from = getResendFrom();
     if (!key) {
       emailStatus = "missing-resend";
+      console.warn("[demo-tier-samples]", resendApiKeyMissingHint());
     } else {
       try {
         const resend = new Resend(key);

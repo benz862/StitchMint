@@ -92,8 +92,11 @@ export function AdminDemoTierSamples() {
     setBusy(true);
     try {
       const res = await fetch("/api/admin/test-resend", { method: "POST" });
-      const j = (await res.json()) as { ok?: boolean; error?: string; from?: string; to?: string; id?: string | null };
-      if (!res.ok) throw new Error(j.error ?? `Request failed (${res.status})`);
+      const j = (await res.json()) as { ok?: boolean; error?: string; hint?: string; from?: string; to?: string; id?: string | null };
+      if (!res.ok) {
+        const parts = [j.error, j.hint].filter(Boolean);
+        throw new Error(parts.join(" — ") || `Request failed (${res.status})`);
+      }
       setTestEmailMessage(`Test email sent to ${j.to ?? "you"} from ${j.from ?? "RESEND_FROM"}. Resend id: ${j.id ?? "—"}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Test send failed");

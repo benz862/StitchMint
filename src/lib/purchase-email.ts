@@ -1,6 +1,7 @@
 import type Stripe from "stripe";
 import { Resend } from "resend";
 import { getPublicAppUrl } from "@/lib/app-url";
+import { getResendApiKey, getResendFrom } from "@/lib/resend-config";
 
 /**
  * After a successful paid checkout, notify the buyer where to download (same account as purchase).
@@ -13,10 +14,10 @@ export async function sendPatternReadyEmail(input: {
   /** When Stripe session has no customer email (rare), use profile email from DB. */
   fallbackEmail?: string | null;
 }): Promise<void> {
-  const key = process.env.RESEND_API_KEY?.trim();
+  const key = getResendApiKey();
   if (!key) return;
 
-  const from = process.env.RESEND_FROM?.trim() || "StitchMint <onboarding@resend.dev>";
+  const from = getResendFrom();
   const s = input.session;
   const details = s.customer_details;
   const to =
