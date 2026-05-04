@@ -9,13 +9,7 @@ const nextConfig: NextConfig = {
    * pattern lists each @fontsource package's files folder so every .woff ships with the function.
    */
   outputFileTracingIncludes: {
-    /**
-     * Match every API route that runs server-side rasterization. The customer flow is at
-     * /api/patterns/**, the admin sample-pack builders are at /api/admin/**, both call into
-     * applyOverlayDraftToImageBuffer and need the woff files present at runtime. Restricting to
-     * /api/patterns/** would silently break admin previews even though local dev works.
-     */
-    "/api/**": [
+    "/api/patterns/**": [
       "./node_modules/@fontsource/inter/files/inter-latin-*-normal.woff",
       "./node_modules/@fontsource/inter/files/inter-latin-*-italic.woff",
       "./node_modules/@fontsource/lora/files/lora-latin-*-normal.woff",
