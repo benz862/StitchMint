@@ -1,8 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { TextTypography } from "@/lib/canvas-crop-text";
-import { clampTypographySizeScale, fontStackFromId } from "@/lib/canvas-crop-text";
+import {
+  clampTypographySizeScale,
+  computeOverlayFontSizePx,
+  fontStackFromId,
+} from "@/lib/canvas-crop-text";
 
 function linesFromText(text: string) {
   return text
@@ -20,19 +24,10 @@ type PointerDragHandlers = {
 };
 
 /**
- * Mirrors the server's font sizing in `canvas-crop-text.ts` (fitFontSize + scaledFontSize).
- *  - Server: baseFit ≈ max(16, maxBand * 0.22) where maxBand = cropBuffer.height * 0.75
- *           → baseFit ≈ cropBuffer.height * 0.165
- *           Then scaled by the user's sizeScale.
- *  - Client: same formula but using the live crop frame's pixel height. Doing this means the live
- *    overlay shows text at the same proportional size the server will rasterize, so dragging in
- *    the editor produces a true WYSIWYG anchor — no more "looks centered on the helmet in editor
- *    but lands on the forehead in the preview".
- *
- * If you change `0.75` here, change `maxBand = ch * 0.75` in canvas-crop-text.ts in lockstep,
- * and bump the wrapper div's `max-h-[…]` class so the CSS clamp doesn't truncate big titles.
+ * Fallback when no measured frame size is available yet (very first paint). Mirrors the server's
+ * starting baseline so single-line titles look roughly right before the canvas measurement runs.
  */
-function proportionalFontSizePx(frameHeight: number, sizeScale: number): number {
+function fallbackFontSizePx(frameHeight: number, sizeScale: number): number {
   const maxBand = frameHeight * 0.75;
   const baseFit = Math.max(16, Math.round(maxBand * 0.22));
   return Math.max(8, Math.round(baseFit * sizeScale));
@@ -57,14 +52,11 @@ export function CropTextLiveOverlay({
   frameSize?: { width: number; height: number } | null;
 }) {
   const lines = useMemo(() => linesFromText(text), [text]);
-  if (lines.length === 0) return null;
-
   const stack = fontStackFromId(typography.fontId);
   const sizeS = clampTypographySizeScale(typography.sizeScale);
   const t = color.trim();
   const safeColor =
     /^#[0-9a-f]{6}$/i.test(t) ? t : /^#[0-9a-f]{3}$/i.test(t) ? `#${t[1]}${t[1]}${t[2]}${t[2]}${t[3]}${t[3]}` : "#ffffff";
-  /** Outline only when the user opts in; matches the server-side rasterizer. */
   const wantsOutline = typography.outline;
   const isLight = (() => {
     const m = safeColor.replace("#", "");
@@ -77,20 +69,61 @@ export function CropTextLiveOverlay({
   const outlineColor = isLight ? "#000000" : "#ffffff";
 
   /**
-   * Prefer a frame-proportional font size (matches the server). Fall back to the legacy
-   * viewport-based clamp if the frame size hasn't been measured yet (very first paint).
+   * Reusable offscreen canvas for measureText calls. Stored in a ref so the same canvas/context is
+   * reused across re-renders, mirroring how the server's drawStraightAtAnchor uses one node-canvas
+   * context. Created lazily on the first effect run (browser-only) so SSR is unaffected.
    */
+  const measureCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  /**
+   * Live-fitted px size: identical pipeline to the server's drawStraightAtAnchor, so what the editor
+   * shows is what gets rasterized into composition.png. Recomputes whenever the text, frame size,
+   * anchor, or typography changes.
+   */
+  const [fittedPx, setFittedPx] = useState<number | null>(null);
+  useEffect(() => {
+    if (!frameSize || frameSize.width <= 0 || frameSize.height <= 0) {
+      setFittedPx(null);
+      return;
+    }
+    if (lines.length === 0) {
+      setFittedPx(null);
+      return;
+    }
+    if (measureCanvasRef.current === null) {
+      measureCanvasRef.current = document.createElement("canvas");
+    }
+    const ctx = measureCanvasRef.current.getContext("2d");
+    if (!ctx) {
+      setFittedPx(null);
+      return;
+    }
+    const px = computeOverlayFontSizePx(
+      ctx,
+      lines,
+      frameSize.width,
+      frameSize.height,
+      Math.min(0.999, Math.max(0.001, anchorX / 100)),
+      typography,
+    );
+    setFittedPx(px);
+  }, [lines, frameSize, anchorX, typography]);
+
+  if (lines.length === 0) return null;
+
   const fontSizeStyle =
-    frameSize && frameSize.height > 0
-      ? `${proportionalFontSizePx(frameSize.height, sizeS)}px`
-      : `clamp(${11 * sizeS}px, ${2.9 * sizeS}vmin, ${28 * sizeS}px)`;
+    fittedPx !== null
+      ? `${fittedPx}px`
+      : frameSize && frameSize.height > 0
+        ? `${fallbackFontSizePx(frameSize.height, sizeS)}px`
+        : `clamp(${11 * sizeS}px, ${2.9 * sizeS}vmin, ${28 * sizeS}px)`;
 
   return (
     <div
       role="group"
       tabIndex={0}
       aria-label="Text preview — drag to move"
-      className="absolute z-[25] max-h-[88%] min-h-[2rem] min-w-[3rem] max-w-[min(98%,32rem)] cursor-grab touch-none select-none rounded-lg px-2 py-1 text-center active:cursor-grabbing"
+      className="absolute z-[25] cursor-grab touch-none select-none rounded-lg px-2 py-1 text-center active:cursor-grabbing"
       style={{
         left: `${anchorX}%`,
         top: `${anchorY}%`,
@@ -104,8 +137,13 @@ export function CropTextLiveOverlay({
         WebkitTextStroke: wantsOutline ? `1px ${outlineColor}` : undefined,
         fontSize: fontSizeStyle,
         lineHeight: 1.28,
-        whiteSpace: "pre-wrap",
-        wordBreak: "break-word",
+        /**
+         * `pre` (not `pre-wrap`) honors user-entered newlines but never auto-wraps on whitespace.
+         * The shared computeOverlayFontSizePx already shrinks the font so a single-line title fits
+         * the crop width — so "Glenn Donnelly" stays on one line at whatever size fits, instead of
+         * breaking at the space between Glenn and Donnelly.
+         */
+        whiteSpace: "pre",
       }}
       {...dragHandlers}
     >
