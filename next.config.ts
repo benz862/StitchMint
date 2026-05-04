@@ -3,13 +3,20 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   serverExternalPackages: ["sharp", "pdfkit", "@napi-rs/canvas"],
   /**
-   * Force Next.js's serverless function tracer to include the bundled @fontsource WOFF files. The
-   * font registration code uses dynamic require.resolve(`@fontsource/...`) paths which the static
-   * tracer can miss, leading to "no text in preview" on Vercel even though it works locally. This
-   * pattern lists each @fontsource package's files folder so every .woff ships with the function.
+   * Force Next.js's serverless function tracer to include the bundled @fontsource WOFF files for
+   * EVERY route under /api/** that might rasterize text via @napi-rs/canvas. The static tracer
+   * cannot follow path.join(process.cwd(), "node_modules/@fontsource/...") so without this glob
+   * the WOFFs are absent at runtime, server-fonts.ts logs "font file missing at runtime" warnings,
+   * and @napi-rs/canvas falls back to system fonts that don't exist on Vercel's Linux runtime —
+   * the canvas still draws but every glyph is invisible. Symptom: text shows in local dev but
+   * disappears in production previews / generated PDFs / tier samples.
+   *
+   * Routes that need this include /api/patterns/** (customer flow) AND /api/admin/** (admin tier
+   * sample builder + webapp showcase). Keep this scoped to /api/** rather than the project root
+   * to avoid bloating non-API server bundles with unused font assets.
    */
   outputFileTracingIncludes: {
-    "/api/patterns/**": [
+    "/api/**": [
       "./node_modules/@fontsource/inter/files/inter-latin-*-normal.woff",
       "./node_modules/@fontsource/inter/files/inter-latin-*-italic.woff",
       "./node_modules/@fontsource/lora/files/lora-latin-*-normal.woff",
