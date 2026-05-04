@@ -68,35 +68,10 @@ function effectiveSizeScale(t: TextTypography): number {
 }
 
 /** Apply user size scale and clamp so text stays drawable. */
-export function scaledFontSize(basePx: number, canvasShortEdge: number, typography: TextTypography): number {
+function scaledFontSize(basePx: number, canvasShortEdge: number, typography: TextTypography): number {
   const scaled = Math.round(basePx * effectiveSizeScale(typography));
   const cap = Math.max(48, Math.min(320, Math.round(canvasShortEdge * 0.62)));
   return Math.max(8, Math.min(cap, scaled));
-}
-
-/**
- * Compute the same final font size the server's drawStraightAtAnchor would use, given a 2D context
- * (browser or node-canvas) and the same crop-frame geometry. Centralised so the live editor overlay
- * and the server raster agree exactly: same fit-to-width + size-scale clamp + cap.
- *
- * Inputs use crop-frame pixel space (ctx font is set as a side effect of fitFontSize). The
- * `anchorXFraction` is the anchor's x position as 0..1 of the frame width — it determines the
- * "centered text can't run off canvas" max width, the same way drawStraightAtAnchor does.
- */
-export function computeOverlayFontSizePx(
-  ctx: CanvasRenderingContext2D,
-  lines: string[],
-  frameWidth: number,
-  frameHeight: number,
-  anchorXFraction: number,
-  typography: TextTypography,
-): number {
-  const padX = frameWidth * 0.02;
-  const ax = anchorXFraction * frameWidth;
-  const maxW = Math.min(frameWidth - padX * 2, Math.min(ax, frameWidth - ax) * 2 + padX);
-  const maxBand = frameHeight * 0.75;
-  const baseFit = fitFontSize(ctx, lines, typography, maxW, maxBand);
-  return scaledFontSize(baseFit, Math.min(frameWidth, frameHeight), typography);
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -134,7 +109,7 @@ export function cropImageToCanvas(img: HTMLImageElement, crop: Area): HTMLCanvas
   return canvas;
 }
 
-export function fitFontSize(
+function fitFontSize(
   ctx: CanvasRenderingContext2D,
   lines: string[],
   typography: TextTypography,
@@ -206,12 +181,22 @@ function drawStraightAtAnchor(
   color: string,
 ) {
   /**
-   * Resolve the final font size via the shared computeOverlayFontSizePx helper so the live editor
-   * overlay (which calls the same helper with an offscreen canvas) and this server raster match
-   * to the pixel — including the auto-fit-to-width loop that shrinks the title when it would
-   * otherwise overflow the crop frame.
+   * Loosened from a 5% padding / 40% band / 0.95 edge-squeeze to 2% / 75% / 1.0:
+   *   - padX 0.02 lets text approach the crop edges instead of leaving an obviously empty
+   *     ~5% gutter on each side.
+   *   - maxBand 0.75 means the auto-fit only starts shrinking when the title block exceeds
+   *     three-quarters of the crop height (was 40%, which capped large titles invisibly).
+   *   - The Math.min(ax, cw-ax) * 2 term keeps centered text from running off the canvas
+   *     when the anchor is near an edge; the previous 0.95 multiplier added a needless
+   *     extra squeeze beyond that hard geometric limit.
+   * The matching constants in CropTextLiveOverlay (and its max-h / max-w wrapper classes) are
+   * updated in lockstep so the editor preview and the server raster stay WYSIWYG.
    */
-  const fontSize = computeOverlayFontSizePx(ctx, lines, cw, ch, ax / cw, typography);
+  const padX = cw * 0.02;
+  const maxW = Math.min(cw - padX * 2, Math.min(ax, cw - ax) * 2 + padX);
+  const maxBand = ch * 0.75;
+  const baseFit = fitFontSize(ctx, lines, typography, maxW, maxBand);
+  const fontSize = scaledFontSize(baseFit, Math.min(cw, ch), typography);
   ctx.font = buildFontCss(typography, fontSize);
   const lineH = fontSize * 1.28;
   const totalH = lines.length * lineH;
