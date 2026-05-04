@@ -11,6 +11,11 @@
     "sample:webapp-showcase": "tsx scripts/build-webapp-download-showcase.ts"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.2.8",
+    "@fontsource/anton": "^5.2.7",
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/lora": "^5.2.8",
+    "@fontsource/roboto-mono": "^5.2.8",
     "@napi-rs/canvas": "^0.1.80",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.105.1",

@@ -2,12 +2,19 @@ import { createCanvas, loadImage } from "@napi-rs/canvas";
 import sharp from "sharp";
 import type { TextOverlaySpec } from "@/lib/canvas-crop-text";
 import { drawTextOverlayOnContext } from "@/lib/canvas-crop-text";
+import { ensureServerFontsRegistered } from "@/lib/server-fonts";
 
 /**
  * Raster text onto the image using Skia (same 2D APIs as the browser). Sharp SVG text is unreliable
  * on serverless (often no visible glyphs), which produced previews with no title.
  */
 export async function applyOverlayDraftToImageBuffer(imageBuffer: Buffer, spec: TextOverlaySpec): Promise<Buffer> {
+  /**
+   * Register bundled fonts before any text draw — Vercel serverless has no usable system fonts, so
+   * Arial/Helvetica/Palatino/etc. would otherwise resolve to nothing and the title would render
+   * invisibly in prod (while working fine in local dev with Mac/Linux system fonts).
+   */
+  ensureServerFontsRegistered();
   const lines = spec.text
     .replace(/\r\n/g, "\n")
     .split("\n")

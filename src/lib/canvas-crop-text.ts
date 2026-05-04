@@ -23,16 +23,23 @@ export type TextOverlaySpec = {
   color: string;
 };
 
+/**
+ * Each option's stack puts a bundled, server-registered font first (Inter / Lora / Anton /
+ * RobotoMono — see src/lib/server-fonts.ts) and then falls back to host-installed equivalents so
+ * the editor still picks up nicer system fonts when available. The bundled families guarantee the
+ * server canvas always has a registered family to draw with on Vercel serverless, where the host
+ * lacks Arial / Helvetica / Palatino / etc. The picker labels stay user-facing and unchanged.
+ */
 export const OVERLAY_FONT_OPTIONS = [
-  { id: "georgia", label: "Georgia", stack: 'Georgia, "Times New Roman", Times, serif' },
-  { id: "times", label: "Times New Roman", stack: '"Times New Roman", Times, serif' },
-  { id: "system", label: "System UI", stack: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif' },
-  { id: "arial", label: "Arial", stack: "Arial, Helvetica, sans-serif" },
-  { id: "verdana", label: "Verdana", stack: "Verdana, Geneva, sans-serif" },
-  { id: "courier", label: "Courier New", stack: '"Courier New", Courier, monospace' },
-  { id: "impact", label: "Impact", stack: 'Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif' },
-  { id: "palatino", label: "Palatino", stack: 'Palatino, "Palatino Linotype", "Book Antiqua", Georgia, serif' },
-  { id: "trebuchet", label: "Trebuchet MS", stack: '"Trebuchet MS", "Lucida Grande", Lucida, sans-serif' },
+  { id: "georgia", label: "Georgia", stack: 'Lora, Georgia, "Times New Roman", Times, serif' },
+  { id: "times", label: "Times New Roman", stack: 'Lora, "Times New Roman", Times, serif' },
+  { id: "system", label: "System UI", stack: 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif' },
+  { id: "arial", label: "Arial", stack: "Inter, Arial, Helvetica, sans-serif" },
+  { id: "verdana", label: "Verdana", stack: "Inter, Verdana, Geneva, sans-serif" },
+  { id: "courier", label: "Courier New", stack: 'RobotoMono, "Courier New", Courier, monospace' },
+  { id: "impact", label: "Impact", stack: 'Anton, Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif' },
+  { id: "palatino", label: "Palatino", stack: 'Lora, Palatino, "Palatino Linotype", "Book Antiqua", Georgia, serif' },
+  { id: "trebuchet", label: "Trebuchet MS", stack: 'Inter, "Trebuchet MS", "Lucida Grande", Lucida, sans-serif' },
 ] as const;
 
 export function fontStackFromId(id: string): string {
