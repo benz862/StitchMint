@@ -57,6 +57,8 @@ yarn-error.log*
 /new */
 /new westie/
 /new westie 2/
+/StitchMint-tier-samples-*/
+/StitchMint-webapp-download-showcase-*/
 
 # typescript
 *.tsbuildinfo
