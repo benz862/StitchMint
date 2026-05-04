@@ -130,8 +130,9 @@ function fitFontSize(
       size -= 2;
       continue;
     }
+    /** Allow text to fill ~98% of the available width before we shrink further; 0.92 felt unnecessarily timid. */
     const widest = Math.max(...lines.map((l) => ctx.measureText(l || " ").width));
-    if (widest <= maxWidth * 0.92) return size;
+    if (widest <= maxWidth * 0.98) return size;
     size -= 2;
   }
   return min;
@@ -179,9 +180,21 @@ function drawStraightAtAnchor(
   typography: TextTypography,
   color: string,
 ) {
-  const padX = cw * 0.05;
-  const maxW = Math.min(cw - padX * 2, Math.min(ax, cw - ax) * 2 * 0.95 + padX);
-  const maxBand = ch * 0.4;
+  /**
+   * Loosened from a 5% padding / 40% band / 0.95 edge-squeeze to 2% / 75% / 1.0:
+   *   - padX 0.02 lets text approach the crop edges instead of leaving an obviously empty
+   *     ~5% gutter on each side.
+   *   - maxBand 0.75 means the auto-fit only starts shrinking when the title block exceeds
+   *     three-quarters of the crop height (was 40%, which capped large titles invisibly).
+   *   - The Math.min(ax, cw-ax) * 2 term keeps centered text from running off the canvas
+   *     when the anchor is near an edge; the previous 0.95 multiplier added a needless
+   *     extra squeeze beyond that hard geometric limit.
+   * The matching constants in CropTextLiveOverlay (and its max-h / max-w wrapper classes) are
+   * updated in lockstep so the editor preview and the server raster stay WYSIWYG.
+   */
+  const padX = cw * 0.02;
+  const maxW = Math.min(cw - padX * 2, Math.min(ax, cw - ax) * 2 + padX);
+  const maxBand = ch * 0.75;
   const baseFit = fitFontSize(ctx, lines, typography, maxW, maxBand);
   const fontSize = scaledFontSize(baseFit, Math.min(cw, ch), typography);
   ctx.font = buildFontCss(typography, fontSize);

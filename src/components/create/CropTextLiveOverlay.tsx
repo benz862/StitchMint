@@ -21,16 +21,19 @@ type PointerDragHandlers = {
 
 /**
  * Mirrors the server's font sizing in `canvas-crop-text.ts` (fitFontSize + scaledFontSize).
- *  - Server: baseFit ≈ max(16, maxBand * 0.22) where maxBand = cropBuffer.height * 0.4
- *           → baseFit ≈ cropBuffer.height * 0.088
+ *  - Server: baseFit ≈ max(16, maxBand * 0.22) where maxBand = cropBuffer.height * 0.75
+ *           → baseFit ≈ cropBuffer.height * 0.165
  *           Then scaled by the user's sizeScale.
  *  - Client: same formula but using the live crop frame's pixel height. Doing this means the live
  *    overlay shows text at the same proportional size the server will rasterize, so dragging in
  *    the editor produces a true WYSIWYG anchor — no more "looks centered on the helmet in editor
  *    but lands on the forehead in the preview".
+ *
+ * If you change `0.75` here, change `maxBand = ch * 0.75` in canvas-crop-text.ts in lockstep,
+ * and bump the wrapper div's `max-h-[…]` class so the CSS clamp doesn't truncate big titles.
  */
 function proportionalFontSizePx(frameHeight: number, sizeScale: number): number {
-  const maxBand = frameHeight * 0.4;
+  const maxBand = frameHeight * 0.75;
   const baseFit = Math.max(16, Math.round(maxBand * 0.22));
   return Math.max(8, Math.round(baseFit * sizeScale));
 }
@@ -87,7 +90,7 @@ export function CropTextLiveOverlay({
       role="group"
       tabIndex={0}
       aria-label="Text preview — drag to move"
-      className="absolute z-[25] max-h-[70%] min-h-[2rem] min-w-[3rem] max-w-[min(92%,28rem)] cursor-grab touch-none select-none rounded-lg px-2 py-1 text-center active:cursor-grabbing"
+      className="absolute z-[25] max-h-[88%] min-h-[2rem] min-w-[3rem] max-w-[min(98%,32rem)] cursor-grab touch-none select-none rounded-lg px-2 py-1 text-center active:cursor-grabbing"
       style={{
         left: `${anchorX}%`,
         top: `${anchorY}%`,
