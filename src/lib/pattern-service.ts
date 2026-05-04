@@ -153,9 +153,19 @@ export async function buildZipForPattern(
   settings: PatternSettings,
   pattern: PatternResult,
 ): Promise<Buffer> {
+  /**
+   * Prefer the WYSIWYG composition (cropped + overlay text baked in, pre-quantization) for the
+   * "Your photo" thumb on the PDF cover. The stitched preview on the right is necessarily a tiny
+   * quantized DMC grid where small titles vanish, so without this the user's composed title
+   * disappears from every PDF in the pack — looks like the overlay never made it through.
+   *
+   * Fall back to a thumb of the raw uncropped original only when no composition was generated
+   * (e.g. resumed from a snapshot that predates compositionPng).
+   */
+  const sourceForThumb: Buffer = pattern.compositionPng ?? originalBuffer;
   let originalThumb: Buffer | undefined;
   try {
-    originalThumb = await sharp(originalBuffer)
+    originalThumb = await sharp(sourceForThumb)
       .rotate()
       .resize({ width: 400, height: 400, fit: "inside" })
       .jpeg({ quality: 82 })
