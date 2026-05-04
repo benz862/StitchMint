@@ -1,6 +1,7 @@
 import type { DetailLevelId } from "@/lib/constants";
 import { generatePattern, type CropPercent, type PatternResult } from "@/lib/pattern-engine";
 import { parseOverlayDraftForServer } from "@/lib/overlay-draft";
+import type { TextOverlaySpec } from "@/lib/canvas-crop-text";
 import { buildPatternZipArchive } from "@/lib/zip-package";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { STORAGE_BUCKETS } from "@/lib/buckets";
@@ -12,6 +13,13 @@ export type PatternSettings = {
   stitchWidth: number;
   detailLevel: DetailLevelId;
   fabricCount: number;
+  /**
+   * Optional explicit overlay spec — used by callers that don't carry a DB row, e.g. the admin
+   * sample-pack builders. When `row` is also supplied to runPatternGeneration, the row's
+   * overlay_draft wins (that's the "real" pattern's saved title); this only fills the gap when no
+   * row exists.
+   */
+  overlay?: TextOverlaySpec | null;
 };
 
 export type PatternRowForGeneration = {
@@ -43,17 +51,19 @@ export async function runPatternGeneration(
   settings: PatternSettings,
   row?: PatternRowForGeneration,
 ): Promise<PatternResult> {
-  const overlaySpec = row ? parseOverlayDraftForServer(row.overlay_draft) : null;
+  const rowOverlay = row ? parseOverlayDraftForServer(row.overlay_draft) : null;
   /**
    * Surface silent dropouts where the row carries an overlay_draft blob but it failed to parse
    * (wrong shape, missing version, empty text after trim) — the user would otherwise see a preview
    * with the title silently missing and no error to chase.
    */
-  if (row?.overlay_draft && !overlaySpec) {
+  if (row?.overlay_draft && !rowOverlay) {
     console.warn("[pattern-service] overlay_draft present but parse returned null", {
       raw: row.overlay_draft,
     });
   }
+  /** Row-derived overlay wins (saved by the customer); fall back to caller-provided settings.overlay (admin sample builder). */
+  const overlaySpec = rowOverlay ?? settings.overlay ?? null;
   return generatePattern({
     imageBuffer: originalBuffer,
     crop: settings.crop,

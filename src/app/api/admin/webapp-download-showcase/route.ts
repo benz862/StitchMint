@@ -3,6 +3,8 @@ import { ADMIN_DEMO_INLINE_ZIP_MAX_BYTES, uploadAdminDemoZipAndSignUrl } from "@
 import { isAdminEmail } from "@/lib/auth-admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { buildWebappDownloadShowcaseZip } from "@/lib/webapp-download-showcase";
+import { parseAdminComposition } from "@/lib/admin-composition";
+import type { SamplePackComposition } from "@/lib/tier-sample-pack";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -48,11 +50,22 @@ export async function POST(request: Request) {
   }
 
   const buf = Buffer.from(await file.arrayBuffer());
-  const baseTitle = safeBaseTitle(file.name);
+  const titleOverride = typeof form.get("title") === "string" ? (form.get("title") as string).trim() : "";
+  const baseTitle = titleOverride || safeBaseTitle(file.name);
+
+  let composition: SamplePackComposition | undefined;
+  try {
+    composition = parseAdminComposition(form);
+  } catch (err) {
+    return NextResponse.json(
+      { error: "Invalid composition payload", detail: err instanceof Error ? err.message : String(err) },
+      { status: 400 },
+    );
+  }
 
   let mega: Buffer;
   try {
-    mega = await buildWebappDownloadShowcaseZip(buf, baseTitle);
+    mega = await buildWebappDownloadShowcaseZip(buf, baseTitle, composition);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Generation failed";
     return NextResponse.json({ error: message }, { status: 500 });

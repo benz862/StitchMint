@@ -3,7 +3,8 @@ import { ADMIN_DEMO_INLINE_ZIP_MAX_BYTES, uploadAdminDemoZipAndSignUrl } from "@
 import { isAdminEmail } from "@/lib/auth-admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getResendClient, getResendFrom, resendApiKeyMissingHint } from "@/lib/resend-config";
-import { buildTierSamplesMegaZip } from "@/lib/tier-sample-pack";
+import { buildTierSamplesMegaZip, type SamplePackComposition } from "@/lib/tier-sample-pack";
+import { parseAdminComposition } from "@/lib/admin-composition";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -58,11 +59,24 @@ export async function POST(request: Request) {
 
   const alsoEmail = form.get("alsoEmail") === "1" || form.get("alsoEmail") === "true";
   const buf = Buffer.from(await file.arrayBuffer());
-  const baseTitle = safeBaseTitle(file.name);
+  /** Allow caller to override the title that gets baked into each tier's PDFs (e.g. admin-set title). */
+  const titleOverride = typeof form.get("title") === "string" ? (form.get("title") as string).trim() : "";
+  const baseTitle = titleOverride || safeBaseTitle(file.name);
+
+  /** Optional admin composition (crop + text overlay) parsed from JSON form fields. */
+  let composition: SamplePackComposition | undefined;
+  try {
+    composition = parseAdminComposition(form);
+  } catch (err) {
+    return NextResponse.json(
+      { error: "Invalid composition payload", detail: err instanceof Error ? err.message : String(err) },
+      { status: 400 },
+    );
+  }
 
   let mega: Buffer;
   try {
-    mega = await buildTierSamplesMegaZip(buf, baseTitle);
+    mega = await buildTierSamplesMegaZip(buf, baseTitle, composition);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Generation failed";
     return NextResponse.json({ error: message }, { status: 500 });

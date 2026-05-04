@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import { PRICING_TIERS } from "@/config/pricing";
 import { buildZipForPattern, runPatternGeneration, type PatternSettings } from "@/lib/pattern-service";
+import type { SamplePackComposition } from "@/lib/tier-sample-pack";
 
 const README = `StitchMint — Web app download showcase
 ==========================================
@@ -33,18 +34,26 @@ function tierFolderName(tierId: string): string {
  * One outer ZIP: per-tier complete customer bundles (as produced by the app)
  * plus unpacked copies under unpacked/{basic|premium|pro}/.
  */
-export async function buildWebappDownloadShowcaseZip(imageBuffer: Buffer, baseTitle: string): Promise<Buffer> {
+export async function buildWebappDownloadShowcaseZip(
+  imageBuffer: Buffer,
+  baseTitle: string,
+  composition?: SamplePackComposition,
+): Promise<Buffer> {
   const outer = new JSZip();
   outer.file("README.txt", README);
+
+  const crop = composition?.crop ?? { x: 0, y: 0, width: 100, height: 100 };
+  const overlay = composition?.overlay ?? null;
 
   for (const tier of PRICING_TIERS) {
     const folder = tierFolderName(tier.id);
     const settings: PatternSettings = {
       title: `${baseTitle} — ${tier.name}`,
-      crop: { x: 0, y: 0, width: 100, height: 100 },
+      crop,
       stitchWidth: tier.engine.stitchWidth,
       detailLevel: tier.engine.detailLevel,
       fabricCount: 14,
+      overlay,
     };
     const pattern = await runPatternGeneration(imageBuffer, settings);
     const bundleBuf = await buildZipForPattern(imageBuffer, settings, pattern);
