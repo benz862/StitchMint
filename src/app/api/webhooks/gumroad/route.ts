@@ -35,6 +35,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true, skipped: "refund" });
   }
 
+  if (body.is_gift_receiver_purchase === "true" || body.is_gift_sender_purchase === "true") {
+    console.warn("[webhook/gumroad] Gift purchase — StitchMint ties patterns to the buyer account that created them", {
+      is_gift_receiver: body.is_gift_receiver_purchase,
+      is_gift_sender: body.is_gift_sender_purchase,
+      email: body.email,
+    });
+    return NextResponse.json(
+      {
+        error:
+          "Gift purchases are not supported for auto-delivery. Buy on Gumroad without “Give as a gift,” using the same email as your StitchMint account.",
+      },
+      { status: 400 },
+    );
+  }
+
   const saleId = body.sale_id?.trim();
   if (!saleId) {
     return NextResponse.json({ error: "Missing sale_id" }, { status: 400 });
