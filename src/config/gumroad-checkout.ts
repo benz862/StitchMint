@@ -31,6 +31,7 @@ export function gumroadPatternFieldName(): string {
   return process.env.GUMROAD_PATTERN_FIELD?.trim() || "pattern_id";
 }
 
+/** Product page URL with pattern_id (and optional email) prefilled — not checkout-only (`wanted=true`). */
 export function buildGumroadCheckoutUrl(
   productUrl: string,
   opts: { patternId: string; email?: string | null },
@@ -39,6 +40,5 @@ export function buildGumroadCheckoutUrl(
   const u = new URL(productUrl);
   u.searchParams.set(field, opts.patternId);
   if (opts.email?.trim()) u.searchParams.set("email", opts.email.trim());
-  u.searchParams.set("wanted", "true");
   return u.toString();
 }
