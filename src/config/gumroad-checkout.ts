@@ -3,6 +3,7 @@ import type { PricingTierId } from "@/config/pricing";
 /** Production Gumroad permalinks (override via env). */
 export const GUMROAD_DEFAULT_URL_BASIC = "https://skillbinder.gumroad.com/l/xhcfx";
 export const GUMROAD_DEFAULT_URL_PLUS = "https://skillbinder.gumroad.com/l/quumdh";
+export const GUMROAD_DEFAULT_URL_PRO = "https://skillbinder.gumroad.com/l/whhlqy";
 
 function gumroadCheckoutDisabled(): boolean {
   const raw = process.env.NEXT_PUBLIC_GUMROAD_CHECKOUT?.trim().toLowerCase();
@@ -16,11 +17,12 @@ function resolveUrlFromEnv(envKey: string, fallback: string): string | null {
   return fallback;
 }
 
-/** Gumroad product URL for this tier, or null (use Stripe — e.g. Pro). */
+/** Gumroad product URL for this tier, or null (falls back to Stripe when unset/disabled). */
 export function gumroadProductUrl(tierId: PricingTierId): string | null {
   if (gumroadCheckoutDisabled()) return null;
   if (tierId === "basic") return resolveUrlFromEnv("NEXT_PUBLIC_GUMROAD_URL_BASIC", GUMROAD_DEFAULT_URL_BASIC);
   if (tierId === "plus") return resolveUrlFromEnv("NEXT_PUBLIC_GUMROAD_URL_PLUS", GUMROAD_DEFAULT_URL_PLUS);
+  if (tierId === "pro") return resolveUrlFromEnv("NEXT_PUBLIC_GUMROAD_URL_PRO", GUMROAD_DEFAULT_URL_PRO);
   return null;
 }
 
