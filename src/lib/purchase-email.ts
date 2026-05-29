@@ -13,10 +13,6 @@ export async function sendPatternReadyEmail(input: {
   /** When Stripe session has no customer email (rare), use profile email from DB. */
   fallbackEmail?: string | null;
 }): Promise<void> {
-  const resend = getResendClient();
-  if (!resend) return;
-
-  const from = getResendFrom();
   const s = input.session;
   const details = s.customer_details;
   const to =
@@ -30,13 +26,33 @@ export async function sendPatternReadyEmail(input: {
   }
 
   const origin = getPublicAppUrl().origin.replace(/\/+$/, "");
+  const successUrl = `${origin}/success?session_id=${encodeURIComponent(s.id)}`;
+  await sendPatternReadyEmailToAddress({
+    to,
+    patternId: input.patternId,
+    patternTitle: input.patternTitle,
+    extraHtml: `<p>If the site does not show “paid” yet, wait a few seconds and refresh — or open your <a href="${successUrl}">order confirmation page</a>.</p>`,
+  });
+}
+
+export async function sendPatternReadyEmailToAddress(input: {
+  to: string;
+  patternId: string;
+  patternTitle: string;
+  extraHtml?: string;
+}): Promise<void> {
+  const resend = getResendClient();
+  if (!resend) return;
+
+  const from = getResendFrom();
+  const origin = getPublicAppUrl().origin.replace(/\/+$/, "");
   const previewUrl = `${origin}/preview/${input.patternId}`;
   const myPatternsUrl = `${origin}/my-patterns`;
-  const successUrl = `${origin}/success?session_id=${encodeURIComponent(s.id)}`;
+  const extra = input.extraHtml ?? `<p>If the site does not show “paid” yet, wait a few seconds and refresh your preview page.</p>`;
 
   const { error } = await resend.emails.send({
     from,
-    to,
+    to: input.to.trim(),
     subject: `Your StitchMint pattern is ready — ${input.patternTitle}`,
     html: `
 <p>Thanks for your purchase.</p>
@@ -46,7 +62,7 @@ export async function sendPatternReadyEmail(input: {
   <li><a href="${previewUrl}">Open your pattern preview</a> and tap <strong>Download ZIP</strong>, or</li>
   <li>Go to <a href="${myPatternsUrl}">My patterns</a>.</li>
 </ul>
-<p>If the site does not show “paid” yet, wait a few seconds and refresh — or open your <a href="${successUrl}">order confirmation page</a>.</p>
+${extra}
 <p>— StitchMint</p>
 `.trim(),
   });

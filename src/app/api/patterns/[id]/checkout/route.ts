@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPublicAppUrl } from "@/lib/app-url";
+import { buildGumroadCheckoutUrl, gumroadProductUrl } from "@/config/gumroad-checkout";
 import { buildCheckoutLineItem, getPricingTierIdFromPatternRow } from "@/lib/pricing-checkout";
 import { resolveStripeProductId } from "@/config/pricing";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -34,6 +35,20 @@ async function postCheckout(ctx: { params: Promise<{ id: string }> }) {
 
   const appUrl = getPublicAppUrl().origin;
   const tierId = getPricingTierIdFromPatternRow(row);
+
+  const gumroadBase = gumroadProductUrl(tierId);
+  if (gumroadBase) {
+    const url = buildGumroadCheckoutUrl(gumroadBase, {
+      patternId: id,
+      email: user.email ?? undefined,
+    });
+    await supabase
+      .from("patterns")
+      .update({ stripe_session_id: null, payment_status: "pending_payment" })
+      .eq("id", id);
+    return NextResponse.json({ url, provider: "gumroad" as const });
+  }
+
   const lineItems = [buildCheckoutLineItem(tierId)];
   const stripeProductId = resolveStripeProductId(tierId);
 

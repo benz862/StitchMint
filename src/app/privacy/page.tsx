@@ -6,7 +6,7 @@ export default function PrivacyPage() {
         <p>
           StitchMint processes the images you upload solely to generate cross-stitch pattern previews and purchased
           downloads. We use trusted infrastructure providers (including Supabase for authentication and storage, and
-          Stripe for payments) under their respective terms.
+          Stripe and Gumroad for payments) under their respective terms.
         </p>
         <p>
           We do not sell your personal information. You may request deletion of your account data by contacting support
