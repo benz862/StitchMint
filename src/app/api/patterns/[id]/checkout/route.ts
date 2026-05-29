@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPublicAppUrl } from "@/lib/app-url";
 import { buildGumroadCheckoutUrl, gumroadProductUrl } from "@/config/gumroad-checkout";
+import { gumroadCheckoutSigningEnabled } from "@/lib/gumroad-checkout-sign";
 import { buildCheckoutLineItem, getPricingTierIdFromPatternRow } from "@/lib/pricing-checkout";
 import { resolveStripeProductId } from "@/config/pricing";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -38,6 +39,11 @@ async function postCheckout(ctx: { params: Promise<{ id: string }> }) {
 
   const gumroadBase = gumroadProductUrl(tierId);
   if (gumroadBase) {
+    if (!gumroadCheckoutSigningEnabled()) {
+      console.warn(
+        "[checkout] GUMROAD_CHECKOUT_SIGNING_SECRET is unset — Gumroad may show an editable pattern_id field. Set the secret on Vercel.",
+      );
+    }
     const url = buildGumroadCheckoutUrl(gumroadBase, {
       patternId: id,
       email: user.email ?? undefined,

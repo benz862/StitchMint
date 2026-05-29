@@ -1,9 +1,23 @@
 import type { PricingTierId } from "@/config/pricing";
+import { buildSignedGumroadCheckoutToken } from "@/lib/gumroad-checkout-sign";
 
 /** Production Gumroad permalinks (override via env). */
 export const GUMROAD_DEFAULT_URL_BASIC = "https://skillbinder.gumroad.com/l/xhcfx";
 export const GUMROAD_DEFAULT_URL_PLUS = "https://skillbinder.gumroad.com/l/quumdh";
 export const GUMROAD_DEFAULT_URL_PRO = "https://skillbinder.gumroad.com/l/whhlqy";
+
+/** Gumroad product permalink slug → StitchMint pricing tier (Ping `permalink` field). */
+export const GUMROAD_PERMALINK_TO_TIER: Record<string, PricingTierId> = {
+  xhcfx: "basic",
+  quumdh: "plus",
+  whhlqy: "pro",
+};
+
+export function pricingTierFromGumroadPermalink(permalink: string | null | undefined): PricingTierId | null {
+  const slug = permalink?.trim().toLowerCase();
+  if (!slug) return null;
+  return GUMROAD_PERMALINK_TO_TIER[slug] ?? null;
+}
 
 function gumroadCheckoutDisabled(): boolean {
   const raw = process.env.NEXT_PUBLIC_GUMROAD_CHECKOUT?.trim().toLowerCase();
@@ -31,14 +45,22 @@ export function gumroadPatternFieldName(): string {
   return process.env.GUMROAD_PATTERN_FIELD?.trim() || "pattern_id";
 }
 
-/** Product page URL with pattern_id (and optional email) prefilled — not checkout-only (`wanted=true`). */
+/**
+ * Product page URL with signed checkout token (`st`) when GUMROAD_CHECKOUT_SIGNING_SECRET is set.
+ * Prefer this over a visible Gumroad custom field — buyers cannot edit `st` without breaking fulfillment.
+ */
 export function buildGumroadCheckoutUrl(
   productUrl: string,
   opts: { patternId: string; email?: string | null },
 ): string {
-  const field = gumroadPatternFieldName();
   const u = new URL(productUrl);
-  u.searchParams.set(field, opts.patternId);
+  const signed = buildSignedGumroadCheckoutToken(opts.patternId);
+  if (signed) {
+    u.searchParams.set("st", signed);
+  } else {
+    const field = gumroadPatternFieldName();
+    u.searchParams.set(field, opts.patternId);
+  }
   if (opts.email?.trim()) u.searchParams.set("email", opts.email.trim());
   return u.toString();
 }

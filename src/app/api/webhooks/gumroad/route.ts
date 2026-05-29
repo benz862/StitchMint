@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPricingTierById } from "@/config/pricing";
+import { pricingTierFromGumroadPermalink } from "@/config/gumroad-checkout";
 import { getPricingTierIdFromPatternRow } from "@/lib/pricing-checkout";
 import { fulfillPatternPurchase } from "@/lib/fulfill-pattern-purchase";
 import {
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
 
   const patternId = patternIdFromGumroadPing(body);
   if (!patternId) {
-    return NextResponse.json({ error: "Missing pattern_id in Gumroad custom field" }, { status: 400 });
+    return NextResponse.json({ error: "Missing or invalid checkout token (st) from Gumroad Ping" }, { status: 400 });
   }
 
   const buyerEmail = body.email?.trim() ?? "";
@@ -64,7 +65,26 @@ export async function POST(request: Request) {
     );
   }
 
+  if (String(pattern.payment_status ?? "") === "paid") {
+    return NextResponse.json({ received: true, duplicate: true });
+  }
+
+  if (!pattern.preview_image_url) {
+    return NextResponse.json({ error: "Pattern has no preview — cannot fulfill." }, { status: 400 });
+  }
+
+  const purchasedTier = pricingTierFromGumroadPermalink(body.permalink);
   const tierId = getPricingTierIdFromPatternRow(pattern);
+  if (purchasedTier && purchasedTier !== tierId) {
+    console.warn("[webhook/gumroad] Gumroad product does not match pattern tier", {
+      patternId,
+      purchasedTier,
+      tierId,
+      permalink: body.permalink,
+    });
+    return NextResponse.json({ error: "Purchased product does not match this pattern's tier." }, { status: 400 });
+  }
+
   const tier = getPricingTierById(tierId);
   const expectedCents = tier?.priceCents ?? 0;
   const paidCents = gumroadPriceCents(body);

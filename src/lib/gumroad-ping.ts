@@ -1,4 +1,5 @@
 import { gumroadPatternFieldName } from "@/config/gumroad-checkout";
+import { patternIdFromSignedGumroadCheckoutToken } from "@/lib/gumroad-checkout-sign";
 
 export type GumroadPingBody = Record<string, string>;
 
@@ -7,10 +8,22 @@ export function parseGumroadPingBody(bodyText: string): GumroadPingBody {
   return Object.fromEntries(params.entries());
 }
 
-/** Extract pattern UUID from Ping payload or URL-prefilled custom field. */
+function urlParamFromPing(body: GumroadPingBody, key: string): string | undefined {
+  return body[key] ?? body[`url_params[${key}]`];
+}
+
+/** Extract pattern UUID from signed checkout token or legacy custom-field / URL params. */
 export function patternIdFromGumroadPing(body: GumroadPingBody): string | null {
+  const signed = urlParamFromPing(body, "st");
+  if (signed) {
+    const fromSigned = patternIdFromSignedGumroadCheckoutToken(signed);
+    if (fromSigned) return fromSigned;
+  }
+
   const field = gumroadPatternFieldName();
-  const candidates = [
+  const legacyCandidates = [
+    urlParamFromPing(body, field),
+    urlParamFromPing(body, "pattern_id"),
     body[field],
     body["pattern_id"],
     body["Pattern ID"],
@@ -18,9 +31,9 @@ export function patternIdFromGumroadPing(body: GumroadPingBody): string | null {
     body[`custom_fields[${field}]`],
     body["custom_fields[pattern_id]"],
   ];
-  for (const raw of candidates) {
+  for (const raw of legacyCandidates) {
     const id = raw?.trim();
-    if (id && /^[0-9a-f-]{36}$/i.test(id)) return id;
+    if (id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) return id;
   }
   return null;
 }
