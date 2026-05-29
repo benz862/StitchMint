@@ -37,7 +37,6 @@ export const PRICING_TIERS: readonly PricingTierConfig[] = [
     /** Stripe: pattern_basic */
     stripePriceId: "price_1TSGhUE6oTidvpnU40GWWPJL",
     features: [
-      "Small/standard pattern size",
       "PDF pattern download",
       "Color chart",
       "Thread list",
@@ -56,7 +55,6 @@ export const PRICING_TIERS: readonly PricingTierConfig[] = [
     stripePriceId: "price_1TSGhVE6oTidvpnUteD7W8U7",
     featured: true,
     features: [
-      "Larger pattern size",
       "Higher color accuracy",
       "PDF pattern download",
       "Symbol chart",
@@ -75,7 +73,6 @@ export const PRICING_TIERS: readonly PricingTierConfig[] = [
     /** Stripe: pattern_pro */
     stripePriceId: "price_1TSGhVE6oTidvpnUNpKFwbU2",
     features: [
-      "Largest pattern size",
       "Best detail retention",
       "Advanced color reduction",
       "PDF pattern download",

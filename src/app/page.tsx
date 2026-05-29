@@ -1,5 +1,6 @@
 import Hero from "@/components/Hero";
 import { PRICING_TIERS } from "@/config/pricing";
+import { tierFinishedSizeSummary, tierStitchGridSummary } from "@/lib/pricing-display";
 
 const faqs = [
   {
@@ -91,6 +92,9 @@ export default function HomePage() {
                   <p className="font-serif text-2xl text-ink">{tier.priceLabel}</p>
                 </div>
                 <p className="mt-1 text-xs text-muted">{tier.description}</p>
+                <p className="mt-1 text-xs text-ink/90">
+                  {tierFinishedSizeSummary(tier)} on 14-count Aida · {tierStitchGridSummary(tier)}
+                </p>
               </div>
             ))}
             <p className="pt-1 text-xs text-muted">One-time download · personal use.</p>

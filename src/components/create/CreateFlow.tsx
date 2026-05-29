@@ -5,6 +5,7 @@ import Cropper, { Area, type MediaSize } from "react-easy-crop";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PRICING_TIERS, type PricingTierId } from "@/config/pricing";
+import { tierCardFacts } from "@/lib/pricing-display";
 import { FABRIC_COUNTS } from "@/lib/constants";
 import { STORAGE_BUCKETS } from "@/lib/buckets";
 import type { TextTypography } from "@/lib/canvas-crop-text";
@@ -1036,7 +1037,10 @@ export function CreateFlow() {
 
         {step === 3 && (
           <div className="space-y-4">
-            <p className="text-muted">Choose your pattern tier. This is what you will pay when you unlock the full chart.</p>
+            <p className="text-muted">
+              Choose your pattern tier. This is what you will pay when you unlock the full chart. Sizes below are rough guides
+              for a square crop on 14-count Aida — your exact inches are shown on the next step after you pick fabric.
+            </p>
             <div className="grid gap-3 sm:grid-cols-1">
               {PRICING_TIERS.map((tier) => (
                 <button
@@ -1059,6 +1063,14 @@ export function CreateFlow() {
                     <p className="mt-1 text-xs font-medium uppercase tracking-wide text-accent-soft">Most popular</p>
                   ) : null}
                   <p className="mt-2 text-sm text-muted">{tier.description}</p>
+                  <dl className="mt-3 space-y-2 rounded-xl border border-line/80 bg-cream/60 px-3 py-3 text-xs">
+                    {tierCardFacts(tier).map((fact) => (
+                      <div key={fact.label}>
+                        <dt className="font-medium text-ink">{fact.label}</dt>
+                        <dd className="mt-0.5 text-muted">{fact.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
                   <ul className="mt-3 list-inside list-disc space-y-1 text-xs text-muted">
                     {tier.features.map((f) => (
                       <li key={f}>{f}</li>
