@@ -95,6 +95,8 @@ export function CreateFlow() {
   /** After resuming from preview, skip one wide-photo auto-zoom pass so we do not fight restored crop/aspect. */
   const resumeSkipWideAutoZoomRef = useRef(false);
   const [step, setStep] = useState<Step>(1);
+  /** Prevent a saved draft from briefly showing the new-upload screen while its original is restored. */
+  const [isLoadingResume, setIsLoadingResume] = useState(() => Boolean(searchParams.get("resume")?.trim()));
   const [file, setFile] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [patternId, setPatternId] = useState<string | null>(null);
@@ -221,11 +223,15 @@ export function CreateFlow() {
 
   useEffect(() => {
     const rid = searchParams.get("resume")?.trim();
-    if (!rid) return;
+    if (!rid) {
+      setIsLoadingResume(false);
+      return;
+    }
     if (resumeHydratedRef.current === rid) return;
     let cancelled = false;
 
     void (async () => {
+      setIsLoadingResume(true);
       setBusy(true);
       setError(null);
       try {
@@ -327,9 +333,15 @@ export function CreateFlow() {
         resumeHydratedRef.current = rid;
         router.replace("/create", { scroll: false });
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Could not resume editing");
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Could not resume editing");
+          setStep(1);
+        }
       } finally {
-        setBusy(false);
+        if (!cancelled) {
+          setBusy(false);
+          setIsLoadingResume(false);
+        }
       }
     })();
 
@@ -682,6 +694,10 @@ export function CreateFlow() {
           <p className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">{error}</p>
         ) : null}
 
+        {isLoadingResume ? (
+          <div className="flex min-h-52 items-center justify-center text-sm text-muted">Opening your saved pattern…</div>
+        ) : (
+          <>
         {patternId ? (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-cream/70 px-4 py-3 text-sm">
             <span className="text-ink">
@@ -1152,6 +1168,8 @@ export function CreateFlow() {
               </button>
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
     </div>
