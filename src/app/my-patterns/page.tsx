@@ -5,7 +5,9 @@ import { PatternDownloadButton } from "@/components/PatternDownloadButton";
 
 export const dynamic = "force-dynamic";
 
-export default async function MyPatternsPage() {
+export default async function MyPatternsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const { q: rawQuery } = await searchParams;
+  const query = rawQuery?.trim().slice(0, 120) ?? "";
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -15,16 +17,22 @@ export default async function MyPatternsPage() {
     redirect("/login?next=/my-patterns");
   }
 
-  const { data: patterns } = await supabase
+  let patternsQuery = supabase
     .from("patterns")
     .select("id,title,created_at,payment_status,stitch_width,stitch_height,color_count")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
+  if (query) patternsQuery = patternsQuery.ilike("title", `%${query.replace(/[%_]/g, "\\$&")}%`);
+  const { data: patterns } = await patternsQuery;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6">
       <h1 className="font-serif text-3xl text-ink sm:text-4xl">My patterns</h1>
       <p className="mt-3 text-sm text-muted">Every pattern you start or purchase lives here.</p>
+      <form className="mt-6 flex gap-2" action="/my-patterns">
+        <input name="q" defaultValue={query} placeholder="Search pattern names" className="w-full rounded-full border border-line bg-card px-4 py-2 text-sm outline-none focus:border-ink" />
+        <button className="rounded-full bg-ink px-4 py-2 text-sm text-cream">Search</button>
+      </form>
 
       <div className="mt-10 space-y-4">
         {(patterns ?? []).length === 0 && <p className="text-sm text-muted">No patterns yet.</p>}

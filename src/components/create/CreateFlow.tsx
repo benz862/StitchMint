@@ -190,6 +190,7 @@ export function CreateFlow() {
   const [cropperBootId, setCropperBootId] = useState(0);
 
   const [overlayText, setOverlayText] = useState("");
+  const [patternTitle, setPatternTitle] = useState("My Pattern");
   const [textAnchorX, setTextAnchorX] = useState(50);
   const [textAnchorY, setTextAnchorY] = useState(82);
   const [textTypography, setTextTypography] = useState<TextTypography>(() => defaultTextTypography());
@@ -303,6 +304,7 @@ export function CreateFlow() {
         if (!res.ok) throw new Error(json.error ?? "Could not load pattern to edit");
         const row = json.pattern;
         if (!row) throw new Error("Could not load pattern to edit");
+        setPatternTitle(typeof row.title === "string" && row.title.trim() ? row.title.slice(0, 120) : "My Pattern");
         if (String(row.payment_status ?? "") === "paid") {
           router.replace(`/preview/${rid}`);
           return;
@@ -648,7 +650,7 @@ export function CreateFlow() {
         const draftRes = await fetch("/api/patterns", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: "My Pattern" }),
+          body: JSON.stringify({ title: patternTitle.trim() || "My Pattern" }),
         });
         const draft = await readApiJson<{ error?: string; id?: string }>(draftRes);
         if (!draftRes.ok) throw new Error(draft.error ?? "Could not start upload");
@@ -716,7 +718,7 @@ export function CreateFlow() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: "My Pattern",
+          title: patternTitle.trim() || "My Pattern",
           crop: cropPct,
           aspectRatio: aspect,
           pricingTier: pricingTierId,
@@ -791,6 +793,18 @@ export function CreateFlow() {
 
         {step === 2 && imageUrl && (
           <div className="space-y-6">
+            <div>
+              <label htmlFor="pattern-title" className="text-sm font-medium text-ink">Name your pattern</label>
+              <p className="mt-1 text-xs text-muted">This is how it will appear in My Patterns and on your PDFs.</p>
+              <input
+                id="pattern-title"
+                value={patternTitle}
+                maxLength={120}
+                onChange={(e) => setPatternTitle(e.target.value)}
+                placeholder="e.g. Chester in the Snow"
+                className="mt-2 w-full rounded-xl border border-line bg-card px-3 py-2 text-sm text-ink outline-none focus:border-ink"
+              />
+            </div>
             <div className="flex flex-wrap gap-2">
               {ASPECT_PRESETS.map((p) => (
                 <button
