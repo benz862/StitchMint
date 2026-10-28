@@ -46,32 +46,45 @@ const STITCH_EXAMPLE_COLORS = [
   "#ddc7aa", "#b57b5e", "#704e43", "#66867d", "#325258", "#d0c2ad", "#b87960", "#775342",
 ] as const;
 
-function StitchSimulationExample({ aspect, title }: { aspect: number; title: string }) {
+function StitchSimulationExample({
+  aspect,
+  fabricCount,
+  tier,
+  title,
+}: {
+  aspect: number;
+  fabricCount: number;
+  tier: (typeof PRICING_TIERS)[number];
+  title: string;
+}) {
+  const columns = tier.id === "basic" ? 8 : tier.id === "plus" ? 12 : 16;
+  const rows = Math.max(6, Math.round(columns / aspect));
+  const cells = Array.from({ length: columns * rows }, (_, index) => STITCH_EXAMPLE_COLORS[index % STITCH_EXAMPLE_COLORS.length]!);
+  const { widthIn, heightIn } = finishedSizeInches(tier.engine.stitchWidth, Math.round(tier.engine.stitchWidth / aspect), fabricCount);
+
   return (
-    <section className="overflow-hidden rounded-2xl border border-line bg-cream/45" aria-labelledby="simulation-example-heading">
-      <div className="grid gap-4 p-4 sm:grid-cols-[132px_1fr] sm:items-center">
+    <div className="grid gap-3 rounded-xl border border-line/80 bg-cream/55 p-3 sm:grid-cols-[104px_1fr] sm:items-center">
         <div
-          className="relative mx-auto w-full max-w-[132px] overflow-hidden rounded-xl border border-line bg-cream shadow-sm"
+          className="relative mx-auto w-full max-w-[104px] overflow-hidden rounded-lg border border-line bg-cream shadow-sm"
           style={{ aspectRatio: String(aspect) }}
           aria-hidden="true"
         >
-          <div className="grid h-full grid-cols-8">
-            {STITCH_EXAMPLE_COLORS.map((color, index) => (
+          <div className="grid h-full" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+            {cells.map((color, index) => (
               <span key={index} className="border-[0.5px] border-black/[0.035]" style={{ backgroundColor: color }} />
             ))}
           </div>
-          <span className="absolute inset-x-2 top-1/2 -translate-y-1/2 rounded bg-ink/75 px-1.5 py-1 text-center font-serif text-sm leading-tight text-cream shadow-sm">
+          <span className="absolute inset-x-1.5 top-1/2 -translate-y-1/2 rounded bg-ink/75 px-1 py-0.5 text-center font-serif text-xs leading-tight text-cream shadow-sm">
             {title}
           </span>
         </div>
         <div>
-          <p id="simulation-example-heading" className="font-medium text-ink">Your stitch simulation</p>
-          <p className="mt-1 text-sm text-muted">
-            Your photo is converted into a grid of thread colors, with your title included in the preview. This is an example — the colors and details will come from your image.
+          <p className="text-xs font-medium text-ink">Example simulation: {tier.engine.stitchWidth} × {Math.round(tier.engine.stitchWidth / aspect)} stitches</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted">
+            About {widthIn.toFixed(2)} × {heightIn.toFixed(2)} in on {fabricCount}-count Aida. More stitches retain more detail from your photo.
           </p>
         </div>
-      </div>
-    </section>
+    </div>
   );
 }
 
@@ -1103,7 +1116,6 @@ export function CreateFlow() {
               Choose your pattern tier. This is what you will pay when you unlock the full chart. Sizes below are rough guides
               for 14-count Aida — your exact inches are shown on the next step after you pick fabric.
             </p>
-            <StitchSimulationExample aspect={aspect} title={overlayText.trim().slice(0, 36) || "Your title"} />
             <div className="grid gap-3 sm:grid-cols-1">
               {PRICING_TIERS.map((tier) => (
                 <button
@@ -1126,8 +1138,16 @@ export function CreateFlow() {
                     <p className="mt-1 text-xs font-medium uppercase tracking-wide text-accent-soft">Most popular</p>
                   ) : null}
                   <p className="mt-2 text-sm text-muted">{tier.description}</p>
+                  <div className="mt-3">
+                    <StitchSimulationExample
+                      aspect={aspect}
+                      fabricCount={fabric}
+                      tier={tier}
+                      title={overlayText.trim().slice(0, 28) || "Your title"}
+                    />
+                  </div>
                   <dl className="mt-3 space-y-2 rounded-xl border border-line/80 bg-cream/60 px-3 py-3 text-xs">
-                    {tierCardFacts(tier).map((fact) => (
+                    {tierCardFacts(tier, fabric, aspect).map((fact) => (
                       <div key={fact.label}>
                         <dt className="font-medium text-ink">{fact.label}</dt>
                         <dd className="mt-0.5 text-muted">{fact.value}</dd>

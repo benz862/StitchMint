@@ -12,7 +12,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type FulfillPatternPurchaseInput = {
   patternId: string;
-  /** Stored in orders.stripe_session_id for idempotency (e.g. Stripe cs_… or gumroad:…). */
+  /** Stored in orders.stripe_session_id for idempotency (for example, a Stripe Checkout Session ID). */
   externalOrderId: string;
   amountCents: number;
   currency: string;

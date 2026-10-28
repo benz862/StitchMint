@@ -2,7 +2,7 @@ import type { PricingTierConfig } from "@/config/pricing";
 import type { DetailLevelId } from "@/lib/constants";
 import { finishedSizeInches, inchesToCm } from "@/lib/measurements";
 
-/** Reference for tier cards before the user picks crop/fabric (matches create-flow square preset). */
+/** Defaults used outside the create flow, where a crop shape and fabric have not been selected yet. */
 export const TIER_SIZE_REFERENCE_FABRIC_COUNT = 14;
 export const TIER_SIZE_REFERENCE_ASPECT = 1;
 
@@ -27,17 +27,21 @@ export function approximateFinishedSizeForTier(
   return finishedSizeInches(w, h, fabricCount);
 }
 
-export function tierFinishedSizeSummary(tier: PricingTierConfig): string {
-  const { widthIn, heightIn } = approximateFinishedSizeForTier(tier);
+export function tierFinishedSizeSummary(
+  tier: PricingTierConfig,
+  fabricCount = TIER_SIZE_REFERENCE_FABRIC_COUNT,
+  aspect = TIER_SIZE_REFERENCE_ASPECT,
+): string {
+  const { widthIn, heightIn } = approximateFinishedSizeForTier(tier, fabricCount, aspect);
   const cmW = inchesToCm(widthIn);
   const cmH = inchesToCm(heightIn);
   return `~${widthIn.toFixed(1)}″ × ${heightIn.toFixed(1)}″ finished (${cmW.toFixed(0)} × ${cmH.toFixed(0)} cm)`;
 }
 
-export function tierStitchGridSummary(tier: PricingTierConfig): string {
+export function tierStitchGridSummary(tier: PricingTierConfig, aspect = TIER_SIZE_REFERENCE_ASPECT): string {
   const w = tier.engine.stitchWidth;
-  const h = referenceStitchHeight(w);
-  return `${w} × ${h} stitch grid (square crop)`;
+  const h = referenceStitchHeight(w, aspect);
+  return `${w} × ${h} stitch grid`;
 }
 
 export function tierDetailSummary(tier: PricingTierConfig): string {
@@ -47,10 +51,14 @@ export function tierDetailSummary(tier: PricingTierConfig): string {
 export type TierCardFact = { label: string; value: string };
 
 /** Key facts shown on tier selection (step 3) and marketing pricing blocks. */
-export function tierCardFacts(tier: PricingTierConfig): TierCardFact[] {
+export function tierCardFacts(
+  tier: PricingTierConfig,
+  fabricCount = TIER_SIZE_REFERENCE_FABRIC_COUNT,
+  aspect = TIER_SIZE_REFERENCE_ASPECT,
+): TierCardFact[] {
   return [
-    { label: "Rough finished size", value: `${tierFinishedSizeSummary(tier)} on ${TIER_SIZE_REFERENCE_FABRIC_COUNT}-count Aida` },
-    { label: "Chart size", value: tierStitchGridSummary(tier) },
+    { label: "Finished size", value: `${tierFinishedSizeSummary(tier, fabricCount, aspect)} on ${fabricCount}-count Aida` },
+    { label: "Chart size", value: tierStitchGridSummary(tier, aspect) },
     { label: "Detail", value: tierDetailSummary(tier) },
     {
       label: "Includes",

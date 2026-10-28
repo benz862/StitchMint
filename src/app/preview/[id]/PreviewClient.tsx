@@ -299,10 +299,8 @@ export function PreviewClient() {
               completes.
             </p>
             <p className="rounded-2xl border border-accent-soft/40 bg-cream/50 px-4 py-3 text-xs leading-relaxed text-ink">
-              <span className="font-medium">Before you pay on Gumroad:</span> use the same email in Gumroad&apos;s contact field as you use
-              to sign in to StitchMint — that is how we deliver your pattern. Do not use &quot;Give as a gift&quot; unless the recipient
-              will sign in to StitchMint with that same email and this pattern on their account; gifts usually will not unlock for someone
-              else automatically.
+              <span className="font-medium">Secure Stripe checkout:</span> Stripe uses the email from your StitchMint account so we can
+              attach the purchased download to the right pattern. Complete payment in the Stripe checkout window, then return here to download.
             </p>
             <button
               type="button"
