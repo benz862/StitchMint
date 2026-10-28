@@ -23,6 +23,26 @@ function isDetailLevel(v: string): v is DetailLevelId {
   return v in DETAIL_LEVELS;
 }
 
+const ORIENTATION_PRESETS = [3 / 4, 1, 4 / 3] as const;
+
+/**
+ * Accept older create-flow pages that do not send `aspectRatio` yet. A crop can occasionally be incomplete
+ * during a client-side remount, so normalize whichever usable ratio we have rather than blocking the customer.
+ */
+function normalizeOrientation(aspectRatio: unknown, crop: CropPercent): number {
+  const requested = Number(aspectRatio);
+  const fromCrop = Number(crop.width) / Number(crop.height);
+  const source = Number.isFinite(requested) && requested > 0
+    ? requested
+    : Number.isFinite(fromCrop) && fromCrop > 0
+      ? fromCrop
+      : 3 / 4;
+
+  return ORIENTATION_PRESETS.reduce((closest, preset) =>
+    Math.abs(Math.log(source / preset)) < Math.abs(Math.log(source / closest)) ? preset : closest,
+  );
+}
+
 export async function GET(_request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     return await handleGet(ctx);
@@ -170,10 +190,7 @@ async function handlePatch(request: Request, ctx: { params: Promise<{ id: string
   if (![14, 16, 18].includes(fabricCount)) {
     return NextResponse.json({ error: "Invalid fabric count" }, { status: 400 });
   }
-  const aspectRatio = Number(body.aspectRatio ?? crop.width / crop.height);
-  if (![3 / 4, 1, 4 / 3].some((preset) => Math.abs(aspectRatio - preset) < 0.001)) {
-    return NextResponse.json({ error: "Invalid pattern orientation" }, { status: 400 });
-  }
+  const aspectRatio = normalizeOrientation(body.aspectRatio, crop);
 
   const settings: PatternSettings = {
     title,
