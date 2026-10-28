@@ -30,6 +30,51 @@ const ASPECT_PRESETS = [
   { id: "square", label: "Square", value: 1 },
 ] as const;
 
+/** A small, intentionally illustrative stitch grid shown before a customer chooses their detail tier. */
+const STITCH_EXAMPLE_COLORS = [
+  "#e8dac2", "#d7b58a", "#a76d54", "#6e8979", "#405d60", "#d9d0bd", "#bb8a6f", "#81624e",
+  "#e8dac2", "#c99c78", "#9d644e", "#78958a", "#41666a", "#d9d0bd", "#c99c78", "#8e705c",
+  "#ddc7aa", "#b57b5e", "#704e43", "#66867d", "#325258", "#d0c2ad", "#b87960", "#775342",
+  "#e8dac2", "#d7b58a", "#a76d54", "#6e8979", "#405d60", "#d9d0bd", "#bb8a6f", "#81624e",
+  "#e8dac2", "#c99c78", "#9d644e", "#78958a", "#41666a", "#d9d0bd", "#c99c78", "#8e705c",
+  "#ddc7aa", "#b57b5e", "#704e43", "#66867d", "#325258", "#d0c2ad", "#b87960", "#775342",
+  "#e8dac2", "#d7b58a", "#a76d54", "#6e8979", "#405d60", "#d9d0bd", "#bb8a6f", "#81624e",
+  "#e8dac2", "#c99c78", "#9d644e", "#78958a", "#41666a", "#d9d0bd", "#c99c78", "#8e705c",
+  "#ddc7aa", "#b57b5e", "#704e43", "#66867d", "#325258", "#d0c2ad", "#b87960", "#775342",
+  "#e8dac2", "#d7b58a", "#a76d54", "#6e8979", "#405d60", "#d9d0bd", "#bb8a6f", "#81624e",
+  "#e8dac2", "#c99c78", "#9d644e", "#78958a", "#41666a", "#d9d0bd", "#c99c78", "#8e705c",
+  "#ddc7aa", "#b57b5e", "#704e43", "#66867d", "#325258", "#d0c2ad", "#b87960", "#775342",
+] as const;
+
+function StitchSimulationExample({ aspect, title }: { aspect: number; title: string }) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-line bg-cream/45" aria-labelledby="simulation-example-heading">
+      <div className="grid gap-4 p-4 sm:grid-cols-[132px_1fr] sm:items-center">
+        <div
+          className="relative mx-auto w-full max-w-[132px] overflow-hidden rounded-xl border border-line bg-cream shadow-sm"
+          style={{ aspectRatio: String(aspect) }}
+          aria-hidden="true"
+        >
+          <div className="grid h-full grid-cols-8">
+            {STITCH_EXAMPLE_COLORS.map((color, index) => (
+              <span key={index} className="border-[0.5px] border-black/[0.035]" style={{ backgroundColor: color }} />
+            ))}
+          </div>
+          <span className="absolute inset-x-2 top-1/2 -translate-y-1/2 rounded bg-ink/75 px-1.5 py-1 text-center font-serif text-sm leading-tight text-cream shadow-sm">
+            {title}
+          </span>
+        </div>
+        <div>
+          <p id="simulation-example-heading" className="font-medium text-ink">Your stitch simulation</p>
+          <p className="mt-1 text-sm text-muted">
+            Your photo is converted into a grid of thread colors, with your title included in the preview. This is an example — the colors and details will come from your image.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /** react-easy-crop: below 1 shows more of the image in the frame; above 1 crops tighter. */
 const CROP_MIN_ZOOM = 0.28;
 const CROP_MAX_ZOOM = 3;
@@ -1056,8 +1101,9 @@ export function CreateFlow() {
           <div className="space-y-4">
             <p className="text-muted">
               Choose your pattern tier. This is what you will pay when you unlock the full chart. Sizes below are rough guides
-              for a square crop on 14-count Aida — your exact inches are shown on the next step after you pick fabric.
+              for 14-count Aida — your exact inches are shown on the next step after you pick fabric.
             </p>
+            <StitchSimulationExample aspect={aspect} title={overlayText.trim().slice(0, 36) || "Your title"} />
             <div className="grid gap-3 sm:grid-cols-1">
               {PRICING_TIERS.map((tier) => (
                 <button
