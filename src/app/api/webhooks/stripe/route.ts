@@ -27,11 +27,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
-  if (event.type !== "checkout.session.completed") {
+  if (
+    event.type !== "checkout.session.completed" &&
+    event.type !== "checkout.session.async_payment_succeeded"
+  ) {
     return NextResponse.json({ received: true });
   }
 
   const session = event.data.object as Stripe.Checkout.Session;
+  if (session.payment_status === "unpaid") {
+    return NextResponse.json({ received: true });
+  }
+
   const patternId = session.metadata?.patternId ?? session.client_reference_id;
   if (!patternId) {
     return NextResponse.json({ error: "Missing pattern id" }, { status: 400 });

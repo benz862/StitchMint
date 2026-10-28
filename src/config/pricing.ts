@@ -23,9 +23,6 @@ export type PricingTierConfig = {
   engine: { detailLevel: DetailLevelId; stitchWidth: number };
 };
 
-/** Same Product in Stripe for all three one-time prices (dashboard: StitchMint). */
-const STRIPE_PRODUCT_STITCHMINT = "prod_UR8zBss2o6huBV";
-
 export const PRICING_TIERS: readonly PricingTierConfig[] = [
   {
     id: "basic",
@@ -33,9 +30,9 @@ export const PRICING_TIERS: readonly PricingTierConfig[] = [
     description: "Best for simple images, small projects, and first-time stitchers.",
     priceLabel: "$9.95",
     priceCents: 995,
-    stripeProductId: STRIPE_PRODUCT_STITCHMINT,
+    stripeProductId: "prod_VWdvmjsiN8gsxp",
     /** Stripe: pattern_basic */
-    stripePriceId: "price_1TSGhUE6oTidvpnU40GWWPJL",
+    stripePriceId: "price_1UVadcDzwkYa5R1FO2B49otu",
     features: [
       "PDF pattern download",
       "Color chart",
@@ -50,9 +47,9 @@ export const PRICING_TIERS: readonly PricingTierConfig[] = [
     description: "Best for detailed portraits, pets, gifts, and wall-ready projects.",
     priceLabel: "$14.95",
     priceCents: 1495,
-    stripeProductId: STRIPE_PRODUCT_STITCHMINT,
+    stripeProductId: "prod_VWdvuDqoO68mMS",
     /** Stripe: pattern_premium */
-    stripePriceId: "price_1TSGhVE6oTidvpnUteD7W8U7",
+    stripePriceId: "price_1UVadcDzwkYa5R1FxMtIjFw6",
     featured: true,
     features: [
       "Higher color accuracy",
@@ -69,9 +66,9 @@ export const PRICING_TIERS: readonly PricingTierConfig[] = [
     description: "Best for heirloom-quality projects and highly detailed images.",
     priceLabel: "$24.95",
     priceCents: 2495,
-    stripeProductId: STRIPE_PRODUCT_STITCHMINT,
+    stripeProductId: "prod_VWdvBOBN7F2AM9",
     /** Stripe: pattern_pro */
-    stripePriceId: "price_1TSGhVE6oTidvpnUNpKFwbU2",
+    stripePriceId: "price_1UVadcDzwkYa5R1FqrE6efQW",
     features: [
       "Best detail retention",
       "Advanced color reduction",

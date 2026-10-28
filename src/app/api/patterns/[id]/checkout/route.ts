@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import { getPublicAppUrl } from "@/lib/app-url";
-import { buildGumroadCheckoutUrl, gumroadProductUrl } from "@/config/gumroad-checkout";
-import { gumroadCheckoutSigningEnabled } from "@/lib/gumroad-checkout-sign";
 import { buildCheckoutLineItem, getPricingTierIdFromPatternRow } from "@/lib/pricing-checkout";
 import { resolveStripeProductId } from "@/config/pricing";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -37,24 +35,6 @@ async function postCheckout(ctx: { params: Promise<{ id: string }> }) {
   const appUrl = getPublicAppUrl().origin;
   const tierId = getPricingTierIdFromPatternRow(row);
 
-  const gumroadBase = gumroadProductUrl(tierId);
-  if (gumroadBase) {
-    if (!gumroadCheckoutSigningEnabled()) {
-      console.warn(
-        "[checkout] GUMROAD_CHECKOUT_SIGNING_SECRET is unset — Gumroad may show an editable pattern_id field. Set the secret on Vercel.",
-      );
-    }
-    const url = buildGumroadCheckoutUrl(gumroadBase, {
-      patternId: id,
-      email: user.email ?? undefined,
-    });
-    await supabase
-      .from("patterns")
-      .update({ stripe_session_id: null, payment_status: "pending_payment" })
-      .eq("id", id);
-    return NextResponse.json({ url, provider: "gumroad" as const });
-  }
-
   const lineItems = [buildCheckoutLineItem(tierId)];
   const stripeProductId = resolveStripeProductId(tierId);
 
@@ -82,7 +62,7 @@ async function postCheckout(ctx: { params: Promise<{ id: string }> }) {
     console.error("[Stripe checkout.sessions.create]", stripeErr);
     return NextResponse.json(
       {
-        error: `${msg} Check Vercel env: STRIPE_SECRET_KEY, STRIPE_PRICE_ID_BASIC / PLUS / PRO (or legacy STRIPE_PRICE_ID / STRIPE_PRICE_ID_STARTER / PREMIUM), and one-time USD prices.`,
+        error: "We couldn’t start checkout right now. Please try again shortly.",
       },
       { status: 502 },
     );
