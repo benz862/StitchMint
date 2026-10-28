@@ -170,10 +170,15 @@ async function handlePatch(request: Request, ctx: { params: Promise<{ id: string
   if (![14, 16, 18].includes(fabricCount)) {
     return NextResponse.json({ error: "Invalid fabric count" }, { status: 400 });
   }
+  const aspectRatio = Number(body.aspectRatio ?? crop.width / crop.height);
+  if (![3 / 4, 1, 4 / 3].some((preset) => Math.abs(aspectRatio - preset) < 0.001)) {
+    return NextResponse.json({ error: "Invalid pattern orientation" }, { status: 400 });
+  }
 
   const settings: PatternSettings = {
     title,
     crop,
+    aspectRatio,
     stitchWidth: Number(stitchWidth),
     detailLevel: detailLevel as DetailLevelId,
     fabricCount: Number(fabricCount),

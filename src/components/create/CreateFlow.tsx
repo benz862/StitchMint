@@ -648,6 +648,7 @@ export function CreateFlow() {
         body: JSON.stringify({
           title: "My Pattern",
           crop: cropPct,
+          aspectRatio: aspect,
           pricingTier: pricingTierId,
           fabricCount: fabric,
         }),

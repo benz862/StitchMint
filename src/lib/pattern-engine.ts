@@ -20,6 +20,8 @@ export type PatternGenerateInput = {
   imageBuffer: Buffer;
   /** Crop in percentages relative to natural dimensions */
   crop: CropPercent;
+  /** Requested finished-grid width / height. */
+  aspectRatio: number;
   stitchWidth: number;
   detailLevel: DetailLevelId;
   fabricCount: number;
@@ -141,9 +143,12 @@ export async function generatePattern(input: PatternGenerateInput): Promise<Patt
     }
   }
 
+  const stitchHeight = Math.max(40, Math.round(input.stitchWidth / input.aspectRatio));
   let pipeline = sharp(cropBuffer)
     .resize({
       width: input.stitchWidth,
+      height: stitchHeight,
+      fit: "cover",
       withoutEnlargement: false,
       kernel: sharp.kernel.lanczos3,
     })

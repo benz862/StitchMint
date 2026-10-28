@@ -64,6 +64,7 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
   const settings: PatternSettings = {
     title: String(pattern.title ?? "My Pattern"),
     crop: pattern.crop as PatternSettings["crop"],
+    aspectRatio: Number(pattern.stitch_width ?? 1) / Number(pattern.stitch_height ?? 1),
     stitchWidth: Number(pattern.stitch_width_setting ?? pattern.stitch_width ?? 120),
     detailLevel: (pattern.difficulty_mode as PatternSettings["detailLevel"]) ?? "balanced",
     fabricCount: Number(pattern.fabric_count ?? 14),

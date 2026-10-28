@@ -10,6 +10,8 @@ import sharp from "sharp";
 export type PatternSettings = {
   title: string;
   crop: CropPercent;
+  /** Requested finished-grid width / height, selected in the crop editor. */
+  aspectRatio?: number;
   stitchWidth: number;
   detailLevel: DetailLevelId;
   fabricCount: number;
@@ -67,6 +69,10 @@ export async function runPatternGeneration(
   return generatePattern({
     imageBuffer: originalBuffer,
     crop: settings.crop,
+    aspectRatio:
+      Number.isFinite(settings.aspectRatio) && (settings.aspectRatio ?? 0) > 0
+        ? settings.aspectRatio!
+        : Math.max(0.1, settings.crop.width / settings.crop.height),
     stitchWidth: settings.stitchWidth,
     detailLevel: settings.detailLevel,
     fabricCount: settings.fabricCount,
