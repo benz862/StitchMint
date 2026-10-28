@@ -17,7 +17,7 @@ const faqs = [
   },
   {
     q: "What thread brand do you use?",
-    a: "Charts use DMC Six-Strand Embroidery Floss numbers so you can shop confidently.",
+    a: "Charts use DMC Six-Strand Embroidery Floss numbers. Every paid PDF also explains how Anchor stranded cotton compares: both use six strands and the same 8 m skein size, so the estimated skein count carries over when you substitute Anchor.",
   },
 ];
 
@@ -62,6 +62,7 @@ export default function HomePage() {
             "Regular print chart PDF (easy to tile on a home printer)",
             "Large print chart PDF (bigger symbols for tired eyes)",
             "Thread shopping list PDF with checkboxes",
+            "DMC and Anchor compatibility guidance in every PDF",
             "Color preview image for your records",
             "A gentle “read me first” guide for printing and starting",
           ].map((item) => (
