@@ -26,17 +26,12 @@ function isDetailLevel(v: string): v is DetailLevelId {
 const ORIENTATION_PRESETS = [3 / 4, 1, 4 / 3] as const;
 
 /**
- * Accept older create-flow pages that do not send `aspectRatio` yet. A crop can occasionally be incomplete
- * during a client-side remount, so normalize whichever usable ratio we have rather than blocking the customer.
+ * Accept older create-flow pages that do not send `aspectRatio` yet. Those pages can report a square crop
+ * while the visible selector remains Portrait, so their safe default must be the create flow's Portrait preset.
  */
-function normalizeOrientation(aspectRatio: unknown, crop: CropPercent): number {
+function normalizeOrientation(aspectRatio: unknown): number {
   const requested = Number(aspectRatio);
-  const fromCrop = Number(crop.width) / Number(crop.height);
-  const source = Number.isFinite(requested) && requested > 0
-    ? requested
-    : Number.isFinite(fromCrop) && fromCrop > 0
-      ? fromCrop
-      : 3 / 4;
+  const source = Number.isFinite(requested) && requested > 0 ? requested : 3 / 4;
 
   return ORIENTATION_PRESETS.reduce((closest, preset) =>
     Math.abs(Math.log(source / preset)) < Math.abs(Math.log(source / closest)) ? preset : closest,
@@ -190,7 +185,7 @@ async function handlePatch(request: Request, ctx: { params: Promise<{ id: string
   if (![14, 16, 18].includes(fabricCount)) {
     return NextResponse.json({ error: "Invalid fabric count" }, { status: 400 });
   }
-  const aspectRatio = normalizeOrientation(body.aspectRatio, crop);
+  const aspectRatio = normalizeOrientation(body.aspectRatio);
 
   const settings: PatternSettings = {
     title,
