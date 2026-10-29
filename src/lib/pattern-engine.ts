@@ -290,20 +290,33 @@ async function renderPreviewPng(
   const outW = w * scale;
   const outH = h * scale;
   const buf = Buffer.alloc(outW * outH * 3);
+  const fabric = { r: 245, g: 240, b: 231 };
+
+  const blend = (base: number, overlay: number, amount: number) => Math.round(base * (1 - amount) + overlay * amount);
+
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const p = palette[grid[y]![x]!]!;
-      const r = p.rgb.r;
-      const g = p.rgb.g;
-      const b = p.rgb.b;
       for (let dy = 0; dy < scale; dy++) {
         for (let dx = 0; dx < scale; dx++) {
           const ox = x * scale + dx;
           const oy = y * scale + dy;
           const o = (oy * outW + ox) * 3;
-          buf[o] = r;
-          buf[o + 1] = g;
-          buf[o + 2] = b;
+          const forward = Math.abs(dx - dy) <= 1.15;
+          const back = Math.abs(dx - (scale - 1 - dy)) <= 1.15;
+          const onStitch = forward || back;
+          const atCrossing = forward && back;
+          const threadShade = atCrossing ? 0.94 : forward ? 1.04 : 0.86;
+          const thread = {
+            r: Math.max(0, Math.min(255, Math.round(p.rgb.r * threadShade))),
+            g: Math.max(0, Math.min(255, Math.round(p.rgb.g * threadShade))),
+            b: Math.max(0, Math.min(255, Math.round(p.rgb.b * threadShade))),
+          };
+          const underlay = 0.18;
+          const stitchOpacity = onStitch ? 0.96 : underlay;
+          buf[o] = blend(fabric.r, thread.r, stitchOpacity);
+          buf[o + 1] = blend(fabric.g, thread.g, stitchOpacity);
+          buf[o + 2] = blend(fabric.b, thread.b, stitchOpacity);
         }
       }
     }

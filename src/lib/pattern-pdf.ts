@@ -25,6 +25,19 @@ const PDF_BRAND_FOOTER =
 const DMC_ANCHOR_COMPATIBILITY_NOTE =
   "Anchor numbers are closest equivalents, not exact dye matches. DMC and Anchor stranded cotton are both six-strand, 8 m (8.7 yd) skeins, so use the same estimated skein count when substituting. Buy one extra skein for a heavily used color and compare physical floss before you begin.";
 
+/**
+ * Give every chart cell a restrained thread-colour cue without sacrificing the
+ * dark reference symbol. Keeping most of the white paper base also prints
+ * reliably on home printers and remains readable under warm lighting.
+ */
+function mutedChartCellColor(hex: string): string {
+  const normalized = hex.replace(/^#/, "");
+  const channels = [0, 2, 4].map((offset) => Number.parseInt(normalized.slice(offset, offset + 2), 16));
+  const whiteWeight = 0.82;
+  const muted = channels.map((channel) => Math.round(255 * whiteWeight + channel * (1 - whiteWeight)));
+  return `#${muted.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+}
+
 export type PatternPdfMeta = {
   title: string;
   fabricCount: number;
@@ -400,7 +413,7 @@ function drawChartPages(doc: PdfDoc, grid: number[][], palette: PatternColorRow[
           doc.save();
           doc.lineWidth(overlap ? 0.85 : 0.35);
           doc.strokeColor(overlap ? "#c49a6c" : "#e3d9cf");
-          doc.fillColor("#ffffff").rect(gx, gy, cell, cell).fill();
+          doc.fillColor(mutedChartCellColor(col.hex)).rect(gx, gy, cell, cell).fill();
           doc.rect(gx, gy, cell, cell).stroke();
           doc.restore();
           doc.fillColor("#1f1a14").fontSize(variant === "large" ? 8 : 5.5).text(col.symbol, gx, gy + cell * 0.28, {
