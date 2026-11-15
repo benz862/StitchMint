@@ -15,6 +15,7 @@ import { getPricingTierById, inferPricingTierFromEngine, normalizePricingTierId 
 import { STORAGE_BUCKETS } from "@/lib/buckets";
 import { checkoutSummaryForPatternRow } from "@/lib/pricing-checkout";
 import { difficultyLabel } from "@/lib/stitchability";
+import { isOwnerEmail } from "@/lib/auth-owner";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -60,6 +61,7 @@ async function handleGet(ctx: { params: Promise<{ id: string }> }) {
   if (error || !data) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (data.user_id !== user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
+  const ownerAccess = isOwnerEmail(user.email);
   const admin = createServiceRoleClient();
   let previewUrl: string | null = null;
   if (data.preview_image_url) {
@@ -108,6 +110,8 @@ async function handleGet(ctx: { params: Promise<{ id: string }> }) {
   void _grid;
   return NextResponse.json({
     pattern: safe,
+    ownerAccess,
+    unlocked: paid || ownerAccess,
     previewUrl,
     compositionUrl,
     originalImageUrl,

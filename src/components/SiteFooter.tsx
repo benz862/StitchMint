@@ -36,7 +36,7 @@ export function SiteFooter() {
         </div>
         <div className="mt-8 space-y-2 border-t border-line/60 pt-6 text-xs leading-relaxed text-muted">
           <p>
-            © {copyrightYear} StitchMint. A SkillBinder product, operated by Epoxy Dogs LLC. All rights reserved.
+            © {copyrightYear} StitchMint. A SkillBinder product, operated by SkillBinder LLC. All rights reserved.
           </p>
           <p>Unauthorized reproduction or distribution of any content is prohibited.</p>
         </div>

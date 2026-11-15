@@ -1,9 +1,17 @@
 import { NextResponse } from "next/server";
+import { isOwnerEmail } from "@/lib/auth-owner";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { createSignedDownloadUrl } from "@/lib/pattern-service";
+import { createServiceRoleClient } from "@/lib/supabase/service-role";
+import {
+  buildStoredPatternZip,
+  createSignedDownloadUrl,
+  uploadZipPackage,
+  type StoredPatternRowForZip,
+} from "@/lib/pattern-service";
 import { STORAGE_BUCKETS } from "@/lib/buckets";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 export async function GET(_request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
@@ -16,6 +24,33 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
   const { data: row, error } = await supabase.from("patterns").select("*").eq("id", id).maybeSingle();
   if (error || !row) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (row.user_id !== user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  const owner = isOwnerEmail(user.email);
+
+  if (owner) {
+    try {
+      let zipPath =
+        row.payment_status === "paid" && typeof row.zip_file_url === "string" ? row.zip_file_url : null;
+
+      // Owners bypass payment and download expiry. Paid patterns reuse the ZIP
+      // created at fulfillment. For an unpaid owner pattern, build the normal ZIP
+      // from the current saved preview snapshot (rather than reusing a package
+      // that could predate an edit) and store it without changing payment status.
+      if (!zipPath) {
+        const zip = await buildStoredPatternZip(row as StoredPatternRowForZip);
+        zipPath = await uploadZipPackage(id, zip);
+        const admin = createServiceRoleClient();
+        await admin.from("patterns").update({ zip_file_url: zipPath }).eq("id", id);
+      }
+
+      const url = await createSignedDownloadUrl(STORAGE_BUCKETS.packages, zipPath, 60 * 10);
+      return NextResponse.json({ url, ownerAccess: true });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Download failed";
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+  }
+
   if (row.payment_status !== "paid" || !row.zip_file_url) {
     return NextResponse.json({ error: "Download not available yet." }, { status: 400 });
   }

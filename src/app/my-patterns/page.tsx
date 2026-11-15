@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PatternDownloadButton } from "@/components/PatternDownloadButton";
+import { isOwnerEmail } from "@/lib/auth-owner";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,8 @@ export default async function MyPatternsPage({ searchParams }: { searchParams: P
   if (!user) {
     redirect("/login?next=/my-patterns");
   }
+
+  const ownerAccess = isOwnerEmail(user.email);
 
   let patternsQuery = supabase
     .from("patterns")
@@ -42,14 +45,14 @@ export default async function MyPatternsPage({ searchParams }: { searchParams: P
               <p className="font-medium text-ink">{p.title ?? "Untitled pattern"}</p>
               <p className="mt-1 text-xs text-muted">
                 {p.stitch_width}×{p.stitch_height} stitches · {p.color_count} colors ·{" "}
-                {p.payment_status === "paid" ? "Unlocked" : "Preview"}
+                {p.payment_status === "paid" || ownerAccess ? "Unlocked" : "Preview"}
               </p>
             </div>
             <div className="flex gap-2">
               <Link href={`/preview/${p.id}`} className="rounded-full border border-line px-4 py-2 text-sm hover:bg-cream-deep/70">
                 Open
               </Link>
-              {p.payment_status === "paid" ? <PatternDownloadButton patternId={p.id} /> : null}
+              {p.payment_status === "paid" || ownerAccess ? <PatternDownloadButton patternId={p.id} /> : null}
             </div>
           </div>
         ))}

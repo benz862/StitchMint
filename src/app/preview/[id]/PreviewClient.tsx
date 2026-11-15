@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { demoPaymentLinkUrl } from "@/config/demo-checkout";
+import { OwnerExportAllSizesButton } from "@/components/OwnerExportAllSizesButton";
 import { finishedSizeInches, inchesToCm } from "@/lib/measurements";
 import { readApiJson } from "@/lib/read-api-json";
 
@@ -41,6 +42,7 @@ export function PreviewClient() {
   >([]);
   const [difficultyLabel, setDifficultyLabel] = useState<string>("");
   const [checkoutSummary, setCheckoutSummary] = useState<CheckoutSummary | null>(null);
+  const [ownerAccess, setOwnerAccess] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,6 +58,7 @@ export function PreviewClient() {
         palettePreview?: { dmcNumber: string; dmcName: string; hex: string; stitchCount: number }[];
         stats?: { difficultyLabel?: string };
         checkout?: CheckoutSummary;
+        ownerAccess?: boolean;
       }>(res);
       if (cancelled) return;
       if (!res.ok) {
@@ -73,6 +76,7 @@ export function PreviewClient() {
       setPalettePreview(json.palettePreview ?? []);
       setDifficultyLabel(json.stats?.difficultyLabel ?? "");
       setCheckoutSummary(json.checkout ?? null);
+      setOwnerAccess(json.ownerAccess ?? false);
     })();
     return () => {
       cancelled = true;
@@ -259,7 +263,9 @@ export function PreviewClient() {
 
           <div className="rounded-3xl border border-line bg-cream/70 p-6">
             <p className="text-sm font-medium text-ink">Thread preview</p>
-            <p className="mt-1 text-xs text-muted">Full legend unlocks after purchase.</p>
+            <p className="mt-1 text-xs text-muted">
+              {ownerAccess ? "Owner access: the complete pattern package is available below." : "Full legend unlocks after purchase."}
+            </p>
             <div className="mt-4 flex flex-wrap gap-2">
               {palettePreview.map((c) => (
                 <div key={c.dmcNumber} className="flex items-center gap-2 rounded-full border border-line bg-card px-3 py-1 text-xs">
@@ -271,22 +277,25 @@ export function PreviewClient() {
             </div>
           </div>
 
-          {pattern.payment_status === "paid" ? (
-            <button
-              type="button"
-              className="inline-flex w-full items-center justify-center rounded-full bg-ink px-6 py-3 text-sm font-medium text-cream"
-              onClick={async () => {
-                const res = await fetch(`/api/patterns/${id}/download`);
-                const json = await readApiJson<{ error?: string; url?: string }>(res);
-                if (!res.ok) {
-                  setError(json.error ?? "Download failed");
-                  return;
-                }
-                if (json.url) window.location.href = json.url as string;
-              }}
-            >
-              Download ZIP
-            </button>
+          {pattern.payment_status === "paid" || ownerAccess ? (
+            <div className="space-y-3">
+              <button
+                type="button"
+                className="inline-flex w-full items-center justify-center rounded-full bg-ink px-6 py-3 text-sm font-medium text-cream"
+                onClick={async () => {
+                  const res = await fetch(`/api/patterns/${id}/download`);
+                  const json = await readApiJson<{ error?: string; url?: string }>(res);
+                  if (!res.ok) {
+                    setError(json.error ?? "Download failed");
+                    return;
+                  }
+                  if (json.url) window.location.href = json.url as string;
+                }}
+              >
+                Download ZIP
+              </button>
+              {ownerAccess ? <OwnerExportAllSizesButton patternId={id} /> : null}
+            </div>
           ) : (
             <>
             <p className="rounded-2xl border border-line bg-cream/50 px-4 py-3 text-xs leading-relaxed text-muted">

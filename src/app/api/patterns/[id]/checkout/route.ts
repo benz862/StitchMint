@@ -4,6 +4,7 @@ import { buildCheckoutLineItem, getPricingTierIdFromPatternRow } from "@/lib/pri
 import { resolveStripeProductId } from "@/config/pricing";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getStripe } from "@/lib/stripe";
+import { isOwnerEmail } from "@/lib/auth-owner";
 
 export const runtime = "nodejs";
 
@@ -28,6 +29,12 @@ async function postCheckout(ctx: { params: Promise<{ id: string }> }) {
   const { data: row, error } = await supabase.from("patterns").select("*").eq("id", id).maybeSingle();
   if (error || !row) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (row.user_id !== user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (isOwnerEmail(user.email)) {
+    return NextResponse.json(
+      { error: "Owner access already unlocks this pattern.", ownerAccess: true },
+      { status: 409 },
+    );
+  }
   if (!row.preview_image_url) {
     return NextResponse.json({ error: "Create a preview before checkout." }, { status: 400 });
   }

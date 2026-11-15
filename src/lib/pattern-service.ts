@@ -154,6 +154,72 @@ export function hydratePatternFromSnapshot(
   };
 }
 
+export type StoredPatternRowForZip = PatternRowForGeneration & {
+  title?: unknown;
+  preview_image_url?: unknown;
+  grid_json?: unknown;
+  crop?: unknown;
+  stitch_width?: unknown;
+  stitch_height?: unknown;
+  stitch_width_setting?: unknown;
+  difficulty_mode?: unknown;
+  fabric_count?: unknown;
+};
+
+/** Builds the normal single-pattern ZIP from the exact grid snapshot saved for a preview. */
+export async function buildStoredPatternZip(row: StoredPatternRowForZip): Promise<Buffer> {
+  const snap = row.grid_json as Record<string, unknown> | null;
+  if (!snap || !Array.isArray(snap.grid) || !Array.isArray(snap.palette)) {
+    throw new Error("Pattern snapshot missing — generate a preview before downloading.");
+  }
+  if (!row.preview_image_url || !row.original_image_url) {
+    throw new Error("Missing stored assets for this pattern.");
+  }
+
+  const supabase = createServiceRoleClient();
+  const previewFile = await supabase.storage
+    .from(STORAGE_BUCKETS.previews)
+    .download(row.preview_image_url as string);
+  if (previewFile.error || !previewFile.data) {
+    throw new Error(previewFile.error?.message ?? "Preview download failed");
+  }
+  const previewPng = Buffer.from(await previewFile.data.arrayBuffer());
+
+  const hydrated = hydratePatternFromSnapshot(
+    {
+      grid: snap.grid as number[][],
+      palette: snap.palette as PatternResult["palette"],
+      stitchWidth: Number(snap.stitchWidth),
+      stitchHeight: Number(snap.stitchHeight),
+      fabricCount: Number(snap.fabricCount),
+      totalStitches: Number(snap.totalStitches),
+      colorCount: Number(snap.colorCount),
+      stitchabilityScore: Number(snap.stitchabilityScore),
+      difficultyLabel: String(snap.difficultyLabel),
+      isolatedStitches: Number(snap.isolatedStitches),
+      avgBlockSize: Number(snap.avgBlockSize),
+    },
+    previewPng,
+  );
+
+  const original = await downloadOriginalBufferForGeneration(row);
+  const currentWidth = Number(row.stitch_width);
+  const currentHeight = Number(row.stitch_height);
+  const settings: PatternSettings = {
+    title: String(row.title ?? "My Pattern"),
+    crop: row.crop as PatternSettings["crop"],
+    aspectRatio:
+      Number.isFinite(currentWidth) && Number.isFinite(currentHeight) && currentWidth > 0 && currentHeight > 0
+        ? currentWidth / currentHeight
+        : undefined,
+    stitchWidth: Number(row.stitch_width_setting ?? row.stitch_width ?? 120),
+    detailLevel: (row.difficulty_mode as PatternSettings["detailLevel"]) ?? "balanced",
+    fabricCount: Number(row.fabric_count ?? 14),
+  };
+
+  return buildZipForPattern(original, settings, hydrated);
+}
+
 export async function buildZipForPattern(
   originalBuffer: Buffer,
   settings: PatternSettings,
