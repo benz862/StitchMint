@@ -56,3 +56,25 @@ export async function buildAllSizesPatternZip(input: AllSizesPatternZipInput): P
 
   return outer.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
 }
+
+/**
+ * Owner-only Mini size: 64 stitches wide — exactly 4 inches on 16-count Aida
+ * (height follows the image's aspect ratio, like every other size). Uses the
+ * Basic engine's detail level, which suits small, simple designs. Returns the
+ * app's normal single-size deliverable ZIP on its own.
+ */
+export const MINI_STITCH_WIDTH = 64;
+
+export async function buildMiniPatternZip(input: AllSizesPatternZipInput): Promise<Buffer> {
+  const settings: PatternSettings = {
+    title: `${input.title} — Mini Pattern`,
+    crop: input.crop,
+    aspectRatio: input.aspectRatio,
+    stitchWidth: MINI_STITCH_WIDTH,
+    detailLevel: "beginner",
+    fabricCount: input.fabricCount,
+  };
+
+  const pattern = await runPatternGeneration(input.originalBuffer, settings, input.row);
+  return buildZipForPattern(input.originalBuffer, settings, pattern);
+}

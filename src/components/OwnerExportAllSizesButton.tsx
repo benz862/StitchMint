@@ -9,14 +9,15 @@ function filenameFromContentDisposition(value: string | null, fallback: string):
 }
 
 export function OwnerExportAllSizesButton({ patternId }: { patternId: string }) {
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"all" | "mini" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const exportAllSizes = async () => {
-    setBusy(true);
+  const downloadZip = async (kind: "all" | "mini") => {
+    setBusy(kind);
     setError(null);
     try {
-      const res = await fetch(`/api/patterns/${patternId}/export-all`, { method: "POST" });
+      const endpoint = kind === "all" ? "export-all" : "export-mini";
+      const res = await fetch(`/api/patterns/${patternId}/${endpoint}`, { method: "POST" });
       if (!res.ok) {
         let message = "Export failed";
         try {
@@ -31,7 +32,7 @@ export function OwnerExportAllSizesButton({ patternId }: { patternId: string }) 
       const blob = await res.blob();
       const filename = filenameFromContentDisposition(
         res.headers.get("content-disposition"),
-        "StitchMint-All-Sizes.zip",
+        kind === "all" ? "StitchMint-All-Sizes.zip" : "StitchMint-Mini.zip",
       );
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -44,22 +45,36 @@ export function OwnerExportAllSizesButton({ patternId }: { patternId: string }) 
     } catch (e) {
       setError(e instanceof Error ? e.message : "Export failed");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
+
+  const buttonClass =
+    "inline-flex w-full items-center justify-center rounded-full border border-ink bg-card px-6 py-3 text-sm font-medium text-ink shadow-sm transition hover:bg-cream-deep/70 disabled:opacity-50";
 
   return (
     <div>
       <button
         type="button"
-        disabled={busy}
-        onClick={() => void exportAllSizes()}
-        className="inline-flex w-full items-center justify-center rounded-full border border-ink bg-card px-6 py-3 text-sm font-medium text-ink shadow-sm transition hover:bg-cream-deep/70 disabled:opacity-50"
+        disabled={busy !== null}
+        onClick={() => void downloadZip("all")}
+        className={buttonClass}
       >
-        {busy ? "Building all three sizes…" : "Export all sizes (ZIP)"}
+        {busy === "all" ? "Building all three sizes…" : "Export all sizes (ZIP)"}
       </button>
       <p className="mt-2 text-center text-xs text-muted">
         Owner export: Basic, Premium and Pro, each with regular + large print.
+      </p>
+      <button
+        type="button"
+        disabled={busy !== null}
+        onClick={() => void downloadZip("mini")}
+        className={`${buttonClass} mt-3`}
+      >
+        {busy === "mini" ? "Building Mini…" : "Export Mini only (ZIP)"}
+      </button>
+      <p className="mt-2 text-center text-xs text-muted">
+        Owner export: Mini size only — 64 stitches wide (4 in on 16-count), regular + large print.
       </p>
       {error ? <p className="mt-2 text-sm text-red-800">{error}</p> : null}
     </div>
