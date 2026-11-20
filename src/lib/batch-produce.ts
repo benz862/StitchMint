@@ -28,7 +28,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service-role";
  */
 
 export const BATCH_MAX_ITEMS = 20;
-export const BATCH_MODES = ["large", "mini", "combo"] as const;
+export const BATCH_MODES = ["large", "mini", "combo", "bookmark"] as const;
 export type BatchMode = (typeof BATCH_MODES)[number];
 export const BATCH_CROPS = ["square", "full"] as const;
 export type BatchCrop = (typeof BATCH_CROPS)[number];
@@ -73,7 +73,8 @@ export function safeFilenamePart(value: string): string {
 }
 
 export function batchOutputFilename(title: string, mode: BatchMode): string {
-  const suffix = mode === "large" ? "All Sizes" : mode === "mini" ? "Mini" : "Combo";
+  const suffix =
+    mode === "large" ? "All Sizes" : mode === "mini" ? "Mini" : mode === "bookmark" ? "Bookmark" : "Combo";
   return `${safeFilenamePart(title)} - ${suffix}.zip`;
 }
 
@@ -211,12 +212,74 @@ async function buildMiniZip(
   return buildZipForPattern(originalBuffer, settings, pattern);
 }
 
+/**
+ * The Bookmark run: 32 stitches wide × 96 tall (2" × 6" on 16-count), beginner detail level
+ * (palette cap 15 — see DETAIL_LEVELS). The grid height is exact, not aspect-derived by the
+ * caller: the engine computes stitchHeight = round(stitchWidth / aspectRatio), and the
+ * bookmark always passes aspectRatio = 32/96, so every bookmark lands at exactly 32 × 96
+ * regardless of the source image's shape.
+ */
+export const BOOKMARK_ENGINE = { stitchWidth: 32, stitchHeight: 96, detailLevel: "beginner" } as const;
+
+/**
+ * Resolve the bookmark's centered 1:3 crop frame (width:height = 1:3) from the stored
+ * original's real pixel size — the same percent-crop math as resolveBatchCrop's square
+ * branch, with a 1:3 target frame instead of 1:1. A source already at 1:3 keeps the whole
+ * image; a square source yields its centered vertical third; a wider source a centered
+ * vertical slice; a taller source a centered horizontal band.
+ */
+export async function resolveBookmarkCrop(
+  originalBuffer: Buffer,
+): Promise<{ crop: CropPercent; aspectRatio: number }> {
+  const aspectRatio = BOOKMARK_ENGINE.stitchWidth / BOOKMARK_ENGINE.stitchHeight;
+  const meta = await sharp(originalBuffer).metadata();
+  const w = meta.width ?? 0;
+  const h = meta.height ?? 0;
+  if (!w || !h) {
+    return { crop: { x: 0, y: 0, width: 100, height: 100 }, aspectRatio };
+  }
+  const imageRatio = w / h;
+  if (Math.abs(imageRatio - aspectRatio) < 1e-9) {
+    return { crop: { x: 0, y: 0, width: 100, height: 100 }, aspectRatio };
+  }
+  if (imageRatio > aspectRatio) {
+    const widthPct = ((h * aspectRatio) / w) * 100;
+    return { crop: { x: (100 - widthPct) / 2, y: 0, width: widthPct, height: 100 }, aspectRatio };
+  }
+  const heightPct = ((w / aspectRatio) / h) * 100;
+  return { crop: { x: 0, y: (100 - heightPct) / 2, width: 100, height: heightPct }, aspectRatio };
+}
+
+/** The Bookmark run, built exactly like the Mini run but on the fixed 32 × 96 grid. */
+async function buildBookmarkZip(
+  originalBuffer: Buffer,
+  title: string,
+  fabricCount: number,
+): Promise<Buffer> {
+  const { crop, aspectRatio } = await resolveBookmarkCrop(originalBuffer);
+  const settings: PatternSettings = {
+    title: `${title} — Bookmark`,
+    crop,
+    aspectRatio,
+    stitchWidth: BOOKMARK_ENGINE.stitchWidth,
+    detailLevel: BOOKMARK_ENGINE.detailLevel,
+    fabricCount,
+  };
+  const pattern = await runPatternGeneration(originalBuffer, settings);
+  return buildZipForPattern(originalBuffer, settings, pattern);
+}
+
 /** Build the finished per-design ZIP for one batch item, per the batch mode. */
 export async function buildBatchItemZip(
   originalBuffer: Buffer,
   settings: BatchSettings,
   title: string,
 ): Promise<Buffer> {
+  if (settings.mode === "bookmark") {
+    /** Bookmarks ignore the batch crop setting — they always use the centered 1:3 frame. */
+    return buildBookmarkZip(originalBuffer, title, settings.fabricCount);
+  }
+
   const { crop, aspectRatio } = await resolveBatchCrop(originalBuffer, settings.crop);
 
   if (settings.mode === "mini") {

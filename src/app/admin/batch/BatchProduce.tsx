@@ -16,7 +16,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 const MAX_ITEMS = 20;
 const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|bmp|tiff?|avif|heic|heif)$/i;
 
-type Mode = "large" | "mini" | "combo";
+type Mode = "large" | "mini" | "combo" | "bookmark";
 type CropMode = "square" | "full";
 type FabricCount = 12 | 16 | 18;
 type ItemStatus = "local" | "queued" | "working" | "done" | "failed";
@@ -353,9 +353,9 @@ export function BatchProduce() {
     <section className="mt-10 rounded-3xl border border-line bg-card/90 p-6 shadow-sm">
       <h2 className="font-serif text-2xl text-ink">Batch Produce</h2>
       <p className="mt-2 max-w-2xl text-sm text-muted">
-        Drop up to {MAX_ITEMS} images — or one ZIP full of images — pick Large, Mini, or Combo once, and press Start
-        once. Each design is named from its file name, produced on its own, and saved as its own ZIP. No clicking
-        through designs one at a time.
+        Drop up to {MAX_ITEMS} images — or one ZIP full of images — pick Large, Mini, Combo, or Bookmark once, and
+        press Start once. Each design is named from its file name, produced on its own, and saved as its own ZIP. No
+        clicking through designs one at a time.
       </p>
 
       {!started ? (
@@ -400,6 +400,7 @@ export function BatchProduce() {
                     ["large", "Large (All Sizes)"],
                     ["mini", "Mini only"],
                     ["combo", "Combo (Large + Mini)"],
+                    ["bookmark", "Bookmark"],
                   ] as Array<[Mode, string]>
                 ).map(([value, label]) => (
                   <button
@@ -427,15 +428,21 @@ export function BatchProduce() {
                   <button
                     key={value}
                     type="button"
+                    disabled={mode === "bookmark"}
                     onClick={() => setCrop(value)}
                     className={`rounded-full px-4 py-2 text-sm ${
                       crop === value ? "bg-ink text-cream" : "bg-cream-deep/80 text-ink hover:bg-cream-deep"
-                    }`}
+                    } ${mode === "bookmark" ? "cursor-not-allowed opacity-50 hover:bg-cream-deep/80" : ""}`}
                   >
                     {label}
                   </button>
                 ))}
               </div>
+              {mode === "bookmark" ? (
+                <p className="mt-2 text-xs text-muted">
+                  Bookmarks always use a centered 1:3 frame — the crop choice doesn&apos;t apply.
+                </p>
+              ) : null}
             </div>
             <div>
               <p className="text-xs uppercase tracking-wide text-muted">Fabric count</p>
@@ -460,9 +467,16 @@ export function BatchProduce() {
         <p className="mt-4 text-sm text-muted">
           Producing:{" "}
           <strong className="text-ink">
-            {mode === "large" ? "Large (All Sizes)" : mode === "mini" ? "Mini only" : "Combo (Large + Mini)"}
+            {mode === "large"
+              ? "Large (All Sizes)"
+              : mode === "mini"
+                ? "Mini only"
+                : mode === "bookmark"
+                  ? "Bookmark"
+                  : "Combo (Large + Mini)"}
           </strong>{" "}
-          · {crop === "square" ? "Square crop" : "Full image"} · {fabricCount}-count Aida
+          · {mode === "bookmark" ? "1:3 frame" : crop === "square" ? "Square crop" : "Full image"} · {fabricCount}
+          -count Aida
         </p>
       )}
 
@@ -609,7 +623,14 @@ export function BatchProduce() {
               <li key={b.id} className="flex flex-wrap items-center gap-3 text-sm text-muted">
                 <span className="text-ink">{new Date(b.createdAt).toLocaleString()}</span>
                 <span>
-                  {b.settings.mode === "large" ? "Large" : b.settings.mode === "mini" ? "Mini" : "Combo"} ·{" "}
+                  {b.settings.mode === "large"
+                    ? "Large"
+                    : b.settings.mode === "mini"
+                      ? "Mini"
+                      : b.settings.mode === "bookmark"
+                        ? "Bookmark"
+                        : "Combo"}{" "}
+                  ·{" "}
                   {b.counts.done} done
                   {b.counts.failed ? ` · ${b.counts.failed} failed` : ""}
                   {b.counts.queued || b.counts.working ? ` · ${b.counts.queued + b.counts.working} waiting` : ""}
