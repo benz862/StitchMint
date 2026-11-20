@@ -109,6 +109,12 @@ export type SpinStorage = {
   writeJson(path: string, value: unknown): Promise<void>;
   /** Signed URL for an object; null when signing fails. */
   signUrl(path: string, expiresSeconds: number): Promise<string | null>;
+  /**
+   * Whether an object actually exists in the bucket. Signed URLs are issued for
+   * missing paths without complaint, so the draw must check this itself — a winner
+   * must never receive a link to a file that is not there.
+   */
+  exists(path: string): Promise<boolean>;
 };
 
 export function createSupabaseSpinStorage(): SpinStorage {
@@ -136,6 +142,18 @@ export function createSupabaseSpinStorage(): SpinStorage {
       const { data, error } = await bucket.createSignedUrl(path, expiresSeconds);
       if (error || !data?.signedUrl) return null;
       return data.signedUrl;
+    },
+    async exists(path) {
+      // Storage has no HEAD/exists call; list the parent folder and match the file
+      // name exactly. Listing errors are treated as "missing" (fail safe: the wheel
+      // shows its stocked state rather than handing out a dead download link).
+      const slash = path.lastIndexOf("/");
+      const folder = slash >= 0 ? path.slice(0, slash) : "";
+      const name = slash >= 0 ? path.slice(slash + 1) : path;
+      if (!name) return false;
+      const { data, error } = await bucket.list(folder, { search: name, limit: 100 });
+      if (error || !data) return false;
+      return data.some((entry) => entry.name === name);
     },
   };
 }
@@ -205,11 +223,34 @@ export async function loadSpinPool(storage: SpinStorage = getDefaultStorage()): 
   return STARTER_POOL;
 }
 
+/**
+ * Keep only prizes whose ZIP actually exists in the bucket. A manifest (or the starter
+ * pool) can point at files nobody has uploaded yet — those prizes must not appear on
+ * the wheel or in the draw, or a winner gets a signed link to a missing file.
+ * Existence-check failures count as missing (fail safe, see SpinStorage.exists).
+ */
+export async function filterExistingPrizes(
+  pool: SpinPrize[],
+  storage: SpinStorage = getDefaultStorage(),
+): Promise<SpinPrize[]> {
+  if (!pool.length) return pool;
+  const checks = await Promise.all(
+    pool.map(async (prize) => {
+      try {
+        return (await storage.exists(prize.storagePath)) ? prize : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return checks.filter((p): p is SpinPrize => p !== null);
+}
+
 /** Pool entries for the public page, with preview images signed for display. */
 export async function getPublicSpinPool(
   storage: SpinStorage = getDefaultStorage(),
 ): Promise<PublicSpinPrize[]> {
-  const pool = await loadSpinPool(storage);
+  const pool = await filterExistingPrizes(await loadSpinPool(storage), storage);
   return Promise.all(
     pool.map(async (prize) => ({
       id: prize.id,
@@ -231,7 +272,9 @@ function unlockDateAfter(lastSpinAtIso: string): string {
  *
  * - Invalid email → { status: "invalid_email" }.
  * - Empty pool → { status: "empty_pool" } (no claim written, so joining the letter in the
- *   "being stocked" state never burns the person's first real spin).
+ *   "being stocked" state never burns the person's first real spin). "Empty" includes a
+ *   pool whose prize ZIPs are not in the bucket yet — only prizes with an existing file
+ *   take part in the draw (see filterExistingPrizes).
  * - Last spin < 30 days ago → { status: "already_spun", unlockDate }; nothing is drawn
  *   and the claim is left untouched.
  * - Otherwise: uniform random draw, claim written/updated, 7-day signed download URL.
@@ -243,7 +286,9 @@ export async function performSpin(
   const email = normalizeEmail(input.email);
   if (!email) return { status: "invalid_email" };
 
-  const pool = await loadSpinPool(storage);
+  // Only prizes whose ZIP is really in the bucket can be won. When none are stocked,
+  // this is exactly the empty-pool case: no draw, and no claim is burned.
+  const pool = await filterExistingPrizes(await loadSpinPool(storage), storage);
   if (!pool.length) return { status: "empty_pool" };
 
   const now = input.now ?? new Date();
@@ -278,6 +323,114 @@ export async function performSpin(
   };
 }
 
+const ETSY_SHOP_URL = "https://www.etsy.com/shop/StitchMintPatterns";
+const SPIN_PAGE_URL = "https://stitchmint.app/spin";
+const LOGO_URL = "https://stitchmint.app/stitchmint_logo.png";
+
+/** Brand palette from src/app/globals.css (email clients need literal hex values). */
+const BRAND = {
+  cream: "#f7f1e8",
+  card: "#fffdf8",
+  ink: "#2c2416",
+  muted: "#6b5f52",
+  accent: "#8b7355",
+  line: "#e5dccf",
+} as const;
+
+/**
+ * Build the branded winner email (HTML + plain text). Kept separate from sending so
+ * the template can be unit-tested directly. The download URL appears both as a
+ * prominent button and as raw copyable text — the same belt-and-braces treatment as
+ * the on-screen win panel.
+ */
+export function buildSpinWinnerEmail(input: {
+  prizeTitle: string;
+  downloadUrl: string | null;
+  optIn: boolean;
+}): { subject: string; html: string; text: string } {
+  const subject = `You won a free StitchMint bookmark — ${input.prizeTitle}`;
+  const titleHtml = escapeHtml(input.prizeTitle);
+  const url = input.downloadUrl;
+
+  const downloadHtml = url
+    ? `
+          <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:24px auto 8px auto;">
+            <tr>
+              <td align="center" bgcolor="${BRAND.ink}" style="border-radius:999px;">
+                <a href="${escapeHtml(url)}" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:${BRAND.cream};text-decoration:none;">Download your pattern</a>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:12px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:${BRAND.muted};">Button not working? Copy this link into your browser — it works for 7 days:</p>
+          <p style="margin:4px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;word-break:break-all;"><a href="${escapeHtml(url)}" style="color:${BRAND.accent};">${escapeHtml(url)}</a></p>`
+    : `
+          <p style="margin:16px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:${BRAND.ink};">Your download link is on its way — if it doesn't arrive in a few minutes, head back to the <a href="${SPIN_PAGE_URL}" style="color:${BRAND.accent};">StitchMint spin page</a> and check your spam folder too.</p>`;
+
+  const letterHtml = input.optIn
+    ? `<p style="margin:16px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:${BRAND.muted};">You're also on the StitchMint letter list — a free pattern lands in the first issue every month. Unsubscribe anytime.</p>`
+    : "";
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<body style="margin:0;padding:0;background-color:${BRAND.cream};">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:${BRAND.cream};">
+    <tr>
+      <td align="center" style="padding:28px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:${BRAND.card};border:1px solid ${BRAND.line};border-radius:16px;">
+          <tr>
+            <td align="center" style="padding:28px 32px 4px 32px;">
+              <img src="${LOGO_URL}" alt="StitchMint" width="180" style="display:block;max-width:180px;height:auto;" />
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:12px 32px 28px 32px;">
+              <h1 style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:26px;line-height:1.25;color:${BRAND.ink};">You won a free bookmark pattern!</h1>
+              <p style="margin:14px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.6;color:${BRAND.ink};">You spun the StitchMint wheel and won <strong>${titleHtml}</strong> — a complete bookmark cross stitch pattern (32 × 96 stitches) with its DMC thread list.</p>
+              ${downloadHtml}
+              <p style="margin:22px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:${BRAND.ink};">Love it? <a href="${ETSY_SHOP_URL}" style="color:${BRAND.accent};font-weight:bold;">See all our bookmark patterns on Etsy</a> — singles and sets of four, ready to stitch.</p>
+              ${letterHtml}
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:16px 32px 24px 32px;border-top:1px solid ${BRAND.line};">
+              <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:${BRAND.muted};">StitchMint · <a href="https://stitchmint.app" style="color:${BRAND.muted};">stitchmint.app</a> · Patterns for personal use only.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  const textLines = [
+    "You won a free StitchMint bookmark pattern!",
+    "",
+    `You spun the StitchMint wheel and won ${input.prizeTitle} — a complete bookmark cross stitch pattern (32 × 96 stitches) with its DMC thread list.`,
+    "",
+  ];
+  if (url) {
+    textLines.push("Download your pattern here (link works for 7 days):", url, "");
+  } else {
+    textLines.push(
+      `Your download link is on its way — if it doesn't arrive in a few minutes, head back to the spin page (${SPIN_PAGE_URL}) and check your spam folder too.`,
+      "",
+    );
+  }
+  textLines.push(
+    `Love it? See all our bookmark patterns on Etsy: ${ETSY_SHOP_URL}`,
+  );
+  if (input.optIn) {
+    textLines.push(
+      "",
+      "You're also on the StitchMint letter list — a free pattern lands in the first issue every month. Unsubscribe anytime.",
+    );
+  }
+  textLines.push("", "StitchMint · stitchmint.app · Patterns for personal use only.");
+
+  return { subject, html, text: textLines.join("\n") };
+}
+
 /**
  * Best-effort winner email via the app's existing Resend setup (same pattern as
  * src/lib/purchase-email.ts). Failures are logged, never thrown — the on-screen
@@ -292,23 +445,13 @@ export async function sendSpinWinnerEmail(input: {
   try {
     const resend = getResendClient();
     if (!resend) return;
-    const downloadLine = input.downloadUrl
-      ? `<p><a href="${input.downloadUrl}">Download your free bookmark pattern</a> — this link works for 7 days.</p>`
-      : `<p>Your download link is on the StitchMint spin page — head back there to grab your pattern.</p>`;
-    const letterLine = input.optIn
-      ? `<p>You're also on the StitchMint letter list — a free pattern lands in the first issue every month. Unsubscribe anytime.</p>`
-      : "";
+    const { subject, html, text } = buildSpinWinnerEmail(input);
     const { error } = await resend.emails.send({
       from: getResendFrom(),
       to: input.email,
-      subject: `You won a free StitchMint bookmark — ${input.prizeTitle}`,
-      html: `
-<p>You spun the StitchMint wheel and won <strong>${escapeHtml(input.prizeTitle)}</strong> — a free bookmark cross stitch pattern (32 × 96 stitches).</p>
-${downloadLine}
-<p>Patterns are for personal use only. Want more? Browse all our bookmark patterns in the <a href="https://www.etsy.com/shop/StitchMintPatterns">StitchMint Etsy shop</a>.</p>
-${letterLine}
-<p>— StitchMint</p>
-`.trim(),
+      subject,
+      html,
+      text,
     });
     if (error) console.error("[spin] Resend error:", error.message);
   } catch (err) {

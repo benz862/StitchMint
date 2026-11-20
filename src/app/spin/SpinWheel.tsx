@@ -194,18 +194,26 @@ export function SpinWheel({ pool }: { pool: PublicSpinPrize[] }) {
             />
           ) : null}
           {phase.downloadUrl ? (
-            <a
-              href={phase.downloadUrl}
-              className="mt-5 inline-block rounded-full bg-ink px-6 py-3 font-semibold text-cream transition hover:opacity-90"
-            >
-              Download your free pattern
-            </a>
+            <>
+              <a
+                href={phase.downloadUrl}
+                className="mt-5 inline-block rounded-full bg-ink px-6 py-3 font-semibold text-cream transition hover:opacity-90"
+              >
+                Download your pattern
+              </a>
+              <p className="mt-3 text-xs text-muted">
+                The same link is in your email and works for 7 days. If the button doesn&apos;t work, copy this link:
+              </p>
+              <p className="mx-auto mt-2 max-w-sm select-all break-all rounded-lg border border-line bg-cream px-3 py-2 text-left font-mono text-[11px] leading-relaxed text-ink">
+                {phase.downloadUrl}
+              </p>
+            </>
           ) : (
             <p className="mt-4 text-sm text-muted">
-              Your pattern is on its way to your inbox — check your email for the download link.
+              Your pattern link is on its way to your email — it should arrive within a few minutes. If you
+              don&apos;t see it, check your spam folder for a message from StitchMint.
             </p>
           )}
-          <p className="mt-3 text-xs text-muted">The download link also went to your email and works for 7 days.</p>
           <div className="mt-6 border-t border-line pt-4">
             <p className="text-sm">
               Love it?{" "}
