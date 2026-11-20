@@ -42,6 +42,20 @@ export function AdminDashboard() {
       <h1 className="font-serif text-3xl text-ink">Admin</h1>
       <p className="mt-2 text-sm text-muted">Patterns, orders, and light operations.</p>
 
+      <div className="mt-6 rounded-3xl border border-line bg-card/90 p-5 shadow-sm">
+        <h2 className="font-serif text-xl text-ink">Batch Produce</h2>
+        <p className="mt-1 text-sm text-muted">
+          Drop up to 20 images (or one ZIP), choose Large, Mini, or Combo once, and get a finished ZIP per design —
+          no per-design clicking.
+        </p>
+        <a
+          href="/admin/batch"
+          className="mt-3 inline-block rounded-full bg-ink px-5 py-2 text-sm font-medium text-cream"
+        >
+          Open Batch Produce →
+        </a>
+      </div>
+
       <AdminDemoTierSamples />
 
       <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-end">
