@@ -378,7 +378,16 @@ export async function buildBatchDownloadAll(
   }
   const zip = await outer.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
   const date = manifest.createdAt.slice(0, 10);
-  const filename = `StitchMint-Batch-${date}.zip`;
+  // Name the download after what is inside: when every finished item shares
+  // one base title (trailing variant numbers stripped), the ZIP is called
+  // "<Base> Patterns.zip" — a batch of Bluebonnet 1-4 downloads as
+  // "Bluebonnet Patterns.zip". Mixed batches keep the dated batch name.
+  const baseOf = (t: string) => t.replace(/\s+\d+\s*$/, "").trim();
+  const bases = new Set(done.map((i) => baseOf(i.title)));
+  const sharedBase = bases.size === 1 ? [...bases][0] : "";
+  const filename = sharedBase
+    ? `${safeFilenamePart(sharedBase)} Patterns.zip`
+    : `StitchMint-Batch-${date}.zip`;
   const path = `${batchDir(manifest.ownerUserId, manifest.id)}/__all__/${filename}`;
   const { error } = await admin.storage.from(STORAGE_BUCKETS.packages).upload(path, zip, {
     contentType: "application/zip",
