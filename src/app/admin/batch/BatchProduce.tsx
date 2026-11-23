@@ -16,7 +16,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 const MAX_ITEMS = 20;
 const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|bmp|tiff?|avif|heic|heif)$/i;
 
-type Mode = "large" | "mini" | "combo" | "bookmark";
+type Mode = "large" | "mini" | "combo" | "bookmark" | "sized";
 type CropMode = "square" | "full";
 type FabricCount = 12 | 16 | 18;
 type ItemStatus = "local" | "queued" | "working" | "done" | "failed";
@@ -34,7 +34,7 @@ type LocalItem = {
 type BatchSummary = {
   id: string;
   createdAt: string;
-  settings: { mode: Mode; crop: CropMode; fabricCount: FabricCount };
+  settings: { mode: Mode; crop: CropMode; fabricCount: FabricCount; stitchWidth?: number };
   counts: Record<"queued" | "working" | "done" | "failed", number>;
 };
 
@@ -92,6 +92,7 @@ export function BatchProduce() {
 
   const [items, setItems] = useState<LocalItem[]>([]);
   const [mode, setMode] = useState<Mode>("combo");
+  const [stitchWidth, setStitchWidth] = useState(64);
   const [crop, setCrop] = useState<CropMode>("square");
   const [fabricCount, setFabricCount] = useState<FabricCount>(16);
   const [batchId, setBatchId] = useState<string | null>(null);
@@ -265,7 +266,7 @@ export function BatchProduce() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: newBatchId,
-          settings: { mode, crop, fabricCount },
+          settings: { mode, crop, fabricCount, ...(mode === "sized" ? { stitchWidth } : {}) },
           items: payloadItems,
         }),
       });
@@ -282,7 +283,7 @@ export function BatchProduce() {
     } finally {
       setBusy(false);
     }
-  }, [items, mode, crop, fabricCount, runQueue]);
+  }, [items, mode, stitchWidth, crop, fabricCount, runQueue]);
 
   const openBatch = useCallback(
     async (id: string) => {
@@ -294,12 +295,13 @@ export function BatchProduce() {
         const j = (await res.json().catch(() => ({}))) as {
           error?: string;
           batch?: {
-            settings: { mode: Mode; crop: CropMode; fabricCount: FabricCount };
+            settings: { mode: Mode; crop: CropMode; fabricCount: FabricCount; stitchWidth?: number };
             items: ServerItem[];
           };
         };
         if (!res.ok || !j.batch) throw new Error(j.error ?? `Could not open that batch (${res.status})`);
         setMode(j.batch.settings.mode);
+        setStitchWidth(j.batch.settings.stitchWidth ?? 64);
         setCrop(j.batch.settings.crop);
         setFabricCount(j.batch.settings.fabricCount);
         setItems(
@@ -353,8 +355,8 @@ export function BatchProduce() {
     <section className="mt-10 rounded-3xl border border-line bg-card/90 p-6 shadow-sm">
       <h2 className="font-serif text-2xl text-ink">Batch Produce</h2>
       <p className="mt-2 max-w-2xl text-sm text-muted">
-        Drop up to {MAX_ITEMS} images — or one ZIP full of images — pick Large, Mini, Combo, or Bookmark once, and
-        press Start once. Each design is named from its file name, produced on its own, and saved as its own ZIP. No
+        Drop up to {MAX_ITEMS} images — or one ZIP full of images — pick Large, Mini, Combo, Bookmark, or an exact
+        stitch width with Mini once, and press Start once. Each design is named from its file name, produced on its own, and saved as its own ZIP. No
         clicking through designs one at a time.
       </p>
 
@@ -401,6 +403,7 @@ export function BatchProduce() {
                     ["mini", "Mini only"],
                     ["combo", "Combo (Large + Mini)"],
                     ["bookmark", "Bookmark"],
+                    ["sized", "Exact width + Mini"],
                   ] as Array<[Mode, string]>
                 ).map(([value, label]) => (
                   <button
@@ -415,6 +418,21 @@ export function BatchProduce() {
                   </button>
                 ))}
               </div>
+              {mode === "sized" ? (
+                <label className="mt-3 flex items-center gap-2 text-sm text-ink">
+                  Stitch width
+                  <input
+                    type="number"
+                    min={24}
+                    max={160}
+                    step={1}
+                    value={stitchWidth}
+                    onChange={(e) => setStitchWidth(Number(e.target.value))}
+                    className="w-20 rounded-xl border border-line bg-card px-3 py-1.5 text-sm text-ink"
+                  />
+                  <span className="text-xs text-muted">exact, plus the Mini in every ZIP</span>
+                </label>
+              ) : null}
             </div>
             <div>
               <p className="text-xs uppercase tracking-wide text-muted">Crop</p>
@@ -473,7 +491,9 @@ export function BatchProduce() {
                 ? "Mini only"
                 : mode === "bookmark"
                   ? "Bookmark"
-                  : "Combo (Large + Mini)"}
+                  : mode === "sized"
+                    ? `Exact width ${stitchWidth} + Mini`
+                    : "Combo (Large + Mini)"}
           </strong>{" "}
           · {mode === "bookmark" ? "1:3 frame" : crop === "square" ? "Square crop" : "Full image"} · {fabricCount}
           -count Aida
@@ -629,7 +649,9 @@ export function BatchProduce() {
                       ? "Mini"
                       : b.settings.mode === "bookmark"
                         ? "Bookmark"
-                        : "Combo"}{" "}
+                        : b.settings.mode === "sized"
+                          ? `Exact width ${b.settings.stitchWidth ?? "?"} + Mini`
+                          : "Combo"}{" "}
                   ·{" "}
                   {b.counts.done} done
                   {b.counts.failed ? ` · ${b.counts.failed} failed` : ""}

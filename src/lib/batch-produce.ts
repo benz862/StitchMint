@@ -28,17 +28,22 @@ import { createServiceRoleClient } from "@/lib/supabase/service-role";
  */
 
 export const BATCH_MAX_ITEMS = 20;
-export const BATCH_MODES = ["large", "mini", "combo", "bookmark"] as const;
+export const BATCH_MODES = ["large", "mini", "combo", "bookmark", "sized"] as const;
 export type BatchMode = (typeof BATCH_MODES)[number];
 export const BATCH_CROPS = ["square", "full"] as const;
 export type BatchCrop = (typeof BATCH_CROPS)[number];
 export const BATCH_FABRIC_COUNTS = [12, 16, 18] as const;
 export type BatchFabricCount = (typeof BATCH_FABRIC_COUNTS)[number];
+/** Bounds for the admin "sized" mode's exact stitch width. */
+export const BATCH_SIZED_WIDTH_MIN = 24;
+export const BATCH_SIZED_WIDTH_MAX = 160;
 
 export type BatchSettings = {
   mode: BatchMode;
   crop: BatchCrop;
   fabricCount: BatchFabricCount;
+  /** Exact stitch width for mode "sized" (required there, ignored otherwise). */
+  stitchWidth?: number;
 };
 
 export type BatchItemStatus = "queued" | "working" | "done" | "failed";
@@ -72,9 +77,17 @@ export function safeFilenamePart(value: string): string {
   return cleaned || "StitchMint Pattern";
 }
 
-export function batchOutputFilename(title: string, mode: BatchMode): string {
+export function batchOutputFilename(title: string, mode: BatchMode, stitchWidth?: number): string {
   const suffix =
-    mode === "large" ? "All Sizes" : mode === "mini" ? "Mini" : mode === "bookmark" ? "Bookmark" : "Combo";
+    mode === "large"
+      ? "All Sizes"
+      : mode === "mini"
+        ? "Mini"
+        : mode === "bookmark"
+          ? "Bookmark"
+          : mode === "sized"
+            ? `Sized ${stitchWidth ?? "?"} + Mini`
+            : "Combo";
   return `${safeFilenamePart(title)} - ${suffix}.zip`;
 }
 
@@ -114,11 +127,21 @@ export function validateBatchSettings(raw: unknown): BatchSettings {
   if (!(BATCH_FABRIC_COUNTS as readonly number[]).includes(Number(o.fabricCount))) {
     throw new Error(`settings.fabricCount must be one of ${BATCH_FABRIC_COUNTS.join(", ")}`);
   }
-  return {
+  const settings: BatchSettings = {
     mode: o.mode as BatchMode,
     crop: o.crop as BatchCrop,
     fabricCount: Number(o.fabricCount) as BatchFabricCount,
   };
+  if (settings.mode === "sized") {
+    const w = Number(o.stitchWidth);
+    if (!Number.isInteger(w) || w < BATCH_SIZED_WIDTH_MIN || w > BATCH_SIZED_WIDTH_MAX) {
+      throw new Error(
+        `settings.stitchWidth must be an integer between ${BATCH_SIZED_WIDTH_MIN} and ${BATCH_SIZED_WIDTH_MAX} for sized mode`,
+      );
+    }
+    settings.stitchWidth = w;
+  }
+  return settings;
 }
 
 export async function readBatchManifest(adminUserId: string, batchId: string): Promise<BatchManifest | null> {
@@ -269,6 +292,46 @@ async function buildBookmarkZip(
   return buildZipForPattern(originalBuffer, settings, pattern);
 }
 
+/** Nest one ZIP's files inside another ZIP under a folder (the Combo/Sized Mini merge). */
+async function nestZipFolder(outerBuf: Buffer, innerBuf: Buffer, folderName: string): Promise<Buffer> {
+  const outer = await JSZip.loadAsync(outerBuf);
+  const inner = await JSZip.loadAsync(innerBuf);
+  const folder = outer.folder(folderName);
+  if (!folder) throw new Error(`Could not create ${folderName} folder in ZIP`);
+  for (const entry of Object.values(inner.files)) {
+    if (entry.dir) continue;
+    folder.file(entry.name, await entry.async("nodebuffer"));
+  }
+  return outer.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+}
+
+/**
+ * The Sized run (admin only): one exact stitch width at beginner detail level
+ * (palette cap 15, same as the Mini run), with the Mini run nested under
+ * Mini-64x64/ — a Combo for small designs whose full size is not a sales tier.
+ */
+async function buildSizedZip(
+  originalBuffer: Buffer,
+  title: string,
+  crop: CropPercent,
+  aspectRatio: number,
+  fabricCount: number,
+  stitchWidth: number,
+): Promise<Buffer> {
+  const settings: PatternSettings = {
+    title,
+    crop,
+    aspectRatio,
+    stitchWidth,
+    detailLevel: MINI_ENGINE.detailLevel,
+    fabricCount,
+  };
+  const pattern = await runPatternGeneration(originalBuffer, settings);
+  const sizedZip = await buildZipForPattern(originalBuffer, settings, pattern);
+  const miniZip = await buildMiniZip(originalBuffer, title, crop, aspectRatio, fabricCount);
+  return nestZipFolder(sizedZip, miniZip, MINI_FOLDER);
+}
+
 /** Build the finished per-design ZIP for one batch item, per the batch mode. */
 export async function buildBatchItemZip(
   originalBuffer: Buffer,
@@ -286,6 +349,11 @@ export async function buildBatchItemZip(
     return buildMiniZip(originalBuffer, title, crop, aspectRatio, settings.fabricCount);
   }
 
+  if (settings.mode === "sized") {
+    if (!settings.stitchWidth) throw new Error("sized mode requires settings.stitchWidth");
+    return buildSizedZip(originalBuffer, title, crop, aspectRatio, settings.fabricCount, settings.stitchWidth);
+  }
+
   const allSizes = await buildAllSizesPatternZip({
     originalBuffer,
     title,
@@ -297,15 +365,7 @@ export async function buildBatchItemZip(
 
   /** Combo: the All Sizes folders plus the Mini run's ZIP contents under Mini-64x64/. */
   const miniZip = await buildMiniZip(originalBuffer, title, crop, aspectRatio, settings.fabricCount);
-  const outer = await JSZip.loadAsync(allSizes);
-  const mini = await JSZip.loadAsync(miniZip);
-  const folder = outer.folder(MINI_FOLDER);
-  if (!folder) throw new Error("Could not create Mini folder in combo ZIP");
-  for (const entry of Object.values(mini.files)) {
-    if (entry.dir) continue;
-    folder.file(entry.name, await entry.async("nodebuffer"));
-  }
-  return outer.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+  return nestZipFolder(allSizes, miniZip, MINI_FOLDER);
 }
 
 /**
@@ -333,7 +393,7 @@ export async function processBatchItem(manifest: BatchManifest, itemId: string):
     if (error) throw new Error(error.message);
     item.status = "done";
     item.outputPath = outputPath;
-    item.outputFilename = batchOutputFilename(item.title, manifest.settings.mode);
+    item.outputFilename = batchOutputFilename(item.title, manifest.settings.mode, manifest.settings.stitchWidth);
     item.error = null;
   } catch (err) {
     item.status = "failed";
@@ -367,7 +427,7 @@ export async function buildBatchDownloadAll(
       .from(STORAGE_BUCKETS.packages)
       .download(item.outputPath as string);
     if (error || !data) throw new Error(`Could not read finished ZIP for "${item.title}"`);
-    let name = item.outputFilename ?? batchOutputFilename(item.title, manifest.settings.mode);
+    let name = item.outputFilename ?? batchOutputFilename(item.title, manifest.settings.mode, manifest.settings.stitchWidth);
     if (usedNames.has(name)) {
       let n = 2;
       while (usedNames.has(name.replace(/\.zip$/i, ` ${n}.zip`))) n += 1;
